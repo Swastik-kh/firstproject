@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Save, RotateCcw, Syringe, Calendar, FileDigit, User, Phone, MapPin, CalendarRange, Clock, CheckCircle2, Search, X, AlertTriangle } from 'lucide-react';
+import { Save, RotateCcw, Syringe, Calendar, FileDigit, User, Phone, MapPin, CalendarRange, Clock, CheckCircle2, Search, X, AlertTriangle, Trash2 } from 'lucide-react';
 import { Input } from './Input';
 import { Select } from './Select';
 import { NepaliDatePicker } from './NepaliDatePicker';
-import { RabiesPatient, VaccinationDose, Option } from '../types';
+import { RabiesPatient, VaccinationDose, Option, User as UserType } from '../types';
 // @ts-ignore
 import NepaliDate from 'nepali-date-converter';
 
@@ -13,6 +13,8 @@ interface RabiesRegistrationProps {
   patients: RabiesPatient[];
   onAddPatient: (patient: RabiesPatient) => void;
   onUpdatePatient: (patient: RabiesPatient) => void;
+  onDeletePatient?: (patientId: string) => void; // Prop for deleting patient
+  currentUser: UserType; // To check role
 }
 
 const nepaliMonthOptions = [
@@ -34,7 +36,9 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
   currentFiscalYear, 
   patients, 
   onAddPatient, 
-  onUpdatePatient 
+  onUpdatePatient,
+  onDeletePatient,
+  currentUser
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [modalDateBs, setModalDateBs] = useState('');
@@ -45,6 +49,9 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
       doseIndex: number;
       dose: VaccinationDose;
   } | null>(null);
+
+  // Permission logic: Super Admin and Admin can delete
+  const canDelete = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN';
 
   const getTodayDateAd = () => new Date().toISOString().split('T')[0];
 
@@ -179,6 +186,14 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
         regimen: 'Intradermal',
         schedule: []
     });
+  };
+
+  const handleDeleteClick = (pId: string, pName: string) => {
+      if (window.confirm(`के तपाईं निश्चित हुनुहुन्छ कि तपाईं "${pName}" को विवरण हटाउन चाहनुहुन्छ? यो कार्य पूर्ववत गर्न सकिँदैन।`)) {
+          if (onDeletePatient) {
+              onDeletePatient(pId);
+          }
+      }
   };
 
   const confirmDoseUpdate = () => {
@@ -354,11 +369,12 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
                       <th className="px-6 py-3">दर्ता नं</th>
                       <th className="px-6 py-3">बिरामी विवरण</th>
                       <th className="px-6 py-3">खोप तालिका (Follow-up)</th>
+                      {canDelete && <th className="px-6 py-3 text-right">कार्य (Action)</th>}
                   </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                   {filteredPatients.length === 0 ? (
-                      <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400 italic font-nepali">डाटा फेला परेन</td></tr>
+                      <tr><td colSpan={canDelete ? 4 : 3} className="px-6 py-8 text-center text-slate-400 italic font-nepali">डाटा फेला परेन</td></tr>
                   ) : (
                       filteredPatients.map(p => (
                           <tr key={p.id} className="hover:bg-slate-50">
@@ -387,6 +403,17 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
                                       ))}
                                   </div>
                               </td>
+                              {canDelete && (
+                                  <td className="px-6 py-4 text-right">
+                                      <button 
+                                          onClick={() => handleDeleteClick(p.id, p.name)}
+                                          className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-all"
+                                          title="बिरामी विवरण हटाउनुहोस्"
+                                      >
+                                          <Trash2 size={18} />
+                                      </button>
+                                  </td>
+                              )}
                           </tr>
                       ))
                   )}

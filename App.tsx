@@ -6,7 +6,7 @@ import { APP_NAME, ORG_NAME } from './constants';
 import { Landmark, ShieldCheck } from 'lucide-react';
 import { User, OrganizationSettings, MagFormEntry, RabiesPatient, PurchaseOrderEntry, IssueReportEntry, FirmEntry, QuotationEntry, InventoryItem, Store, StockEntryRequest, DakhilaPratibedanEntry, ReturnEntry, MarmatEntry, DhuliyaunaEntry, LogBookEntry } from './types';
 import { db } from './firebase';
-import { ref, onValue, set, remove, update } from "firebase/database";
+import { ref, onValue, set, remove, update, get } from "firebase/database";
 
 const INITIAL_SETTINGS: OrganizationSettings = {
     orgNameNepali: 'Smart Inventory System',
@@ -26,7 +26,7 @@ const INITIAL_SETTINGS: OrganizationSettings = {
 const DEFAULT_ADMIN: User = {
     id: 'superadmin',
     username: 'admin',
-    password: 'password',
+    password: 'admin',
     role: 'SUPER_ADMIN',
     organizationName: 'Smart Inventory HQ',
     fullName: 'Administrator',
@@ -62,11 +62,24 @@ const App: React.FC = () => {
     const connectedRef = ref(db, ".info/connected");
     onValue(connectedRef, (snap) => setIsDbConnected(snap.val() === true));
 
+    // Ensure Default Admin exists in Database
+    const adminRef = ref(db, 'users/superadmin');
+    get(adminRef).then((snapshot) => {
+        if (!snapshot.exists()) {
+            set(adminRef, DEFAULT_ADMIN);
+        }
+    });
+
     const usersRef = ref(db, 'users');
     onValue(usersRef, (snap) => {
         const data = snap.val();
         const userList = data ? Object.keys(data).map(key => ({ ...data[key], id: key })) : [];
-        setUsers([DEFAULT_ADMIN, ...userList.filter(u => u.username !== 'admin')]);
+        // Ensure at least one admin exists in state
+        if (userList.length === 0) {
+            setUsers([DEFAULT_ADMIN]);
+        } else {
+            setUsers(userList);
+        }
     });
 
     const settingsRef = ref(db, 'settings');
@@ -124,6 +137,7 @@ const App: React.FC = () => {
         rabiesPatients={rabiesPatients}
         onAddRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
         onUpdateRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
+        onDeleteRabiesPatient={(id) => remove(ref(db, `rabiesPatients/${id}`))}
         firms={firms}
         onAddFirm={(f) => set(ref(db, `firms/${f.id}`), f)}
         quotations={quotations}
@@ -181,7 +195,7 @@ const App: React.FC = () => {
           </div>
           <div className="bg-slate-50 p-5 text-center border-t border-slate-100 flex items-center justify-center gap-3">
              <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-                <span className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-green-50 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-50 animate-pulse'}`}></span>
                 <span className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">{isDbConnected ? 'System Online' : 'System Offline'}</span>
              </div>
              <div className="flex items-center gap-1.5 text-slate-400">

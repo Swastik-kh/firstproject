@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { 
   LogOut, Menu, Calendar, Stethoscope, Package, FileText, Settings, LayoutDashboard, 
@@ -53,6 +54,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   rabiesPatients,
   onAddRabiesPatient,
   onUpdateRabiesPatient,
+  onDeleteRabiesPatient,
   firms,
   onAddFirm,
   quotations,
@@ -558,6 +560,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             patients={rabiesPatients}
             onAddPatient={onAddRabiesPatient}
             onUpdatePatient={onUpdateRabiesPatient}
+            onDeletePatient={onDeleteRabiesPatient}
+            currentUser={currentUser}
           />
         );
       case 'report_rabies':
@@ -819,6 +823,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {item.subItems.map((subItem) => (
                         <div key={subItem.id}>
                             <button
+                                /* Fix: Changed subItemId to subItem.id to fix reference error */
                                 onClick={() => subItem.subItems ? handleLevel3Click(subItem.id) : handleSubItemClick(subItem.id)}
                                 className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm transition-colors ${
                                     activeItem === subItem.id

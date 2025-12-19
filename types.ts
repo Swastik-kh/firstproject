@@ -299,7 +299,7 @@ export interface ReturnItem {
   quantity: number;
   rate: number;
   totalAmount: number; // Excl VAT
-  vatAmount: number;
+  vatAmount: number; // VAT Amount
   grandTotal: number; // Incl VAT
   condition: string; // New: सामानको हालको अवस्था
   remarks: string;
@@ -437,6 +437,7 @@ export interface DashboardProps {
   rabiesPatients: RabiesPatient[];
   onAddRabiesPatient: (patient: RabiesPatient) => void;
   onUpdateRabiesPatient: (patient: RabiesPatient) => void;
+  onDeleteRabiesPatient: (patientId: string) => void; 
 
   firms: FirmEntry[];
   onAddFirm: (firm: FirmEntry) => void;
