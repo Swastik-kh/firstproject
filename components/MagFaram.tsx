@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
@@ -302,14 +303,28 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
        </div>
 
        <div id="mag-form-print" className="bg-white p-8 md:p-12 rounded-xl shadow-lg max-w-[210mm] mx-auto min-h-[297mm] font-nepali text-sm print:shadow-none print:p-0">
-          <div className="text-right font-bold text-xs mb-4">म.ले.प.फारम नं: ४०१</div>
+          <div className="text-right font-bold text-[10px] mb-2">म.ले.प.फारम नं: ४०१</div>
           
-          <div className="text-center mb-8 space-y-1">
-              <h1 className="text-xl font-bold text-red-600">{generalSettings.orgNameNepali}</h1>
-              {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
-              {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
-              {generalSettings.subTitleNepali3 && <h3 className="text-lg font-bold">{generalSettings.subTitleNepali3}</h3>}
-              <h2 className="text-lg font-bold underline underline-offset-4 pt-4">माग फारम</h2>
+          <div className="mb-8">
+              <div className="flex items-start justify-between">
+                  <div className="w-24 flex justify-start pt-2">
+                      <img 
+                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" 
+                        alt="Nepal Emblem" 
+                        className="h-24 w-24 object-contain"
+                      />
+                  </div>
+                  <div className="flex-1 text-center space-y-1">
+                      <h1 className="text-xl font-bold text-red-600">{generalSettings.orgNameNepali}</h1>
+                      {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
+                      {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
+                      {generalSettings.subTitleNepali3 && <h3 className="text-lg font-bold">{generalSettings.subTitleNepali3}</h3>}
+                  </div>
+                  <div className="w-24"></div> 
+              </div>
+              <div className="text-center pt-6 pb-2">
+                  <h2 className="text-lg font-bold underline underline-offset-4">माग फारम</h2>
+              </div>
           </div>
 
           <div className="flex justify-between items-start mb-6">
