@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 
 export interface FiscalYear {
@@ -129,6 +128,7 @@ export interface MagFormEntry {
   // New fields for Storekeeper Verification Details
   selectedStoreId?: string; 
   issueItemType?: 'Expendable' | 'Non-Expendable';
+  isViewedByRequester?: boolean; // New: Tracks if the requester has seen the status update
 }
 
 // Purchase Order (Kharid Adesh) Structure

@@ -67,7 +67,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     storeKeeper: { status: 'stock', name: '' },
     receiver: { name: '', designation: '', date: '' }, 
     ledgerEntry: { name: '', date: '' },
-    approvedBy: { name: '', designation: '', date: '' } 
+    approvedBy: { name: '', designation: '', date: '' },
+    isViewedByRequester: true
   });
 
   useEffect(() => {
@@ -87,17 +88,26 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const isVerifying = !isViewOnly && !isNewForm && isStoreKeeper && formDetails.status === 'Pending';
   const isApproving = !isViewOnly && !isNewForm && isAdminOrApproval && formDetails.status === 'Verified';
 
+  // Actionable: Forms that need THIS user's attention right now
   const actionableForms = useMemo(() => {
       if (isStoreKeeper) return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
       if (isAdminOrApproval) return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
       return [];
   }, [existingForms, isStoreKeeper, isAdminOrApproval]);
 
+  // History: Forms I created OR processed forms for Admin/Storekeeper
   const historyForms = useMemo(() => {
-      if (isAdminOrApproval || isStoreKeeper) {
-          return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.id.localeCompare(a.id));
-      }
-      return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.id.localeCompare(a.id));
+      // 1. My own requests (Any status)
+      const myForms = existingForms.filter(f => f.demandBy?.name === currentUser.fullName);
+      
+      // 2. Official historical records for processing roles (Approved/Rejected)
+      const officialHistory = (isAdminOrApproval || isStoreKeeper)
+          ? existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected')
+          : [];
+      
+      // Combine and remove duplicates
+      const combined = [...new Map([...myForms, ...officialHistory].map(item => [item.id, item])).values()];
+      return combined.sort((a, b) => b.id.localeCompare(a.id));
   }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
 
   const itemOptions = useMemo(() => inventoryItems.map(item => {
@@ -122,7 +132,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     if (items.length > 1) {
       setItems(items.filter(i => i.id !== id));
     } else {
-      // If last item, just clear it instead of removing
+      // Clear last item
       setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     }
   };
@@ -131,10 +141,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setItems(prevItems => prevItems.map(item => {
         if (item.id === id) {
             const updated = { ...item, [field]: value };
-            // If user types manually in the name field, treat it as NOT from inventory
-            if (field === 'name') {
-                updated.isFromInventory = false;
-            }
+            if (field === 'name') updated.isFromInventory = false;
             return updated;
         }
         return item;
@@ -151,7 +158,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     name: invItem.itemName,
                     unit: invItem.unit,
                     specification: invItem.specification || item.specification,
-                    isFromInventory: true // Flag as selected from dropdown
+                    isFromInventory: true
                 };
             }
             return item;
@@ -160,7 +167,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   };
 
   const updateStoreKeeperStatus = (status: string) => {
-      if (isViewOnly || !isVerifying) return; // Only during verification can SK change this
+      if (isViewOnly || !isVerifying) return;
       setFormDetails(prev => ({
           ...prev,
           storeKeeper: { ...prev.storeKeeper, status, name: prev.storeKeeper?.name || currentUser.fullName }
@@ -170,71 +177,52 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const handleLoadForm = (form: MagFormEntry, viewOnly: boolean = false) => {
       setEditingId(form.id);
       setIsViewOnly(viewOnly);
-      // When loading, items that have matches in inventory are treated as "from inventory" for safety
       setItems(form.items.map(item => {
           const matched = inventoryItems.some(i => i.itemName === item.name);
           return { ...item, isFromInventory: matched };
       }));
-      setFormDetails({ ...form });
+      
+      // New Logic: If user previews a form that had an update, mark it as viewed
+      if (viewOnly && form.isViewedByRequester === false && form.demandBy?.name === currentUser.fullName) {
+          const updatedForm = { ...form, isViewedByRequester: true };
+          onSave(updatedForm);
+          setFormDetails(updatedForm);
+      } else {
+          setFormDetails({ ...form });
+      }
+      
       setValidationError(null);
   };
 
   const handleSave = () => {
     setValidationError(null);
-
-    if (!formDetails.date || formDetails.date.trim() === '') {
-        setValidationError("कृपया मिति भर्नुहोस्। (Please fill the date)");
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-    }
-
-    if (!formDetails.demandBy?.purpose || formDetails.demandBy.purpose.trim() === '') {
-        setValidationError("कृपया प्रयोजन भर्नुहोस्। (Please fill the purpose)");
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-    }
-
-    if (items.length === 0) {
-        setValidationError("कृपया कम्तिमा एउटा सामान थप्नुहोस्। (Please add at least one item)");
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-    }
+    if (!formDetails.date) { setValidationError("कृपया मिति भर्नुहोस्।"); return; }
+    if (!formDetails.demandBy?.purpose) { setValidationError("कृपया प्रयोजन भर्नुहोस्।"); return; }
 
     const validItems = items.filter(item => item.name && item.name.trim() !== '');
-    if (validItems.length === 0) {
-        setValidationError("कृपया कम्तिमा एउटा सामानको नाम भर्नुहोस्। (Please enter at least one item name)");
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-        if (!items[i].name || items[i].name.trim() === '') {
-            setValidationError(`लहर नं ${i + 1} मा सामानको नाम खाली छ। (Item Name is empty in row ${i + 1})`);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return;
-        }
-        const qtyVal = items[i].quantity ? parseFloat(items[i].quantity.toString()) : 0;
-        if (!items[i].quantity || items[i].quantity.toString().trim() === '' || isNaN(qtyVal) || qtyVal <= 0) {
-            setValidationError(`लहर नं ${i + 1} मा परिमाण खाली छ वा मान्य छैन। (Quantity is empty or invalid in row ${i + 1})`);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return;
-        }
-    }
+    if (validItems.length === 0) { setValidationError("कृपया कम्तिमा एउटा सामानको नाम भर्नुहोस्।"); return; }
 
     let nextStatus = formDetails.status || 'Pending';
+    let nextIsViewed = true; // Default for new forms
+
     if (editingId && editingId !== 'new') {
-        if (isStoreKeeper && formDetails.status === 'Pending') nextStatus = 'Verified';
-        else if (isAdminOrApproval && formDetails.status === 'Verified') nextStatus = 'Approved';
+        if (isStoreKeeper && formDetails.status === 'Pending') {
+            nextStatus = 'Verified';
+            nextIsViewed = false; // Mark unviewed for requester
+        }
+        else if (isAdminOrApproval && formDetails.status === 'Verified') {
+            nextStatus = 'Approved';
+            nextIsViewed = false; // Mark unviewed for requester
+        }
     }
 
-    // Strip internal flags before saving
     const itemsToSave = items.map(({ isFromInventory, ...rest }) => rest);
-
     const newForm: MagFormEntry = {
         ...formDetails,
         id: editingId === 'new' || !editingId ? Date.now().toString() : editingId,
         items: itemsToSave,
-        status: nextStatus
+        status: nextStatus,
+        isViewedByRequester: nextIsViewed
     };
     onSave(newForm);
     alert("माग फारम सुरक्षित भयो।");
@@ -247,23 +235,21 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setValidationError(null);
     setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     setFormDetails({
-        id: '', 
-        items: [], 
-        fiscalYear: currentFiscalYear, 
+        id: '', items: [], fiscalYear: currentFiscalYear, 
         formNo: generateMagFormNo(existingForms, currentFiscalYear),
-        date: todayBS, 
-        status: 'Pending',
+        date: todayBS, status: 'Pending',
         demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
         recommendedBy: { name: '', designation: '', date: '' },
         storeKeeper: { status: 'stock', name: '' },
         receiver: { name: '', designation: '', date: '' }, 
         ledgerEntry: { name: '', date: '' },
-        approvedBy: { name: '', designation: '', date: '' } 
+        approvedBy: { name: '', designation: '', date: '' },
+        isViewedByRequester: true
     });
   };
 
-  const inputReadOnlyClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-slate-50 text-slate-400 cursor-not-allowed px-1 rounded-sm transition-colors";
-  const inputEditableClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-white focus:bg-primary-50 px-1 rounded-sm transition-colors";
+  const inputReadOnlyClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-slate-50 text-slate-500 cursor-not-allowed px-1 rounded-sm";
+  const inputEditableClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-white focus:bg-primary-50 px-1 rounded-sm";
 
   if (!editingId) {
     return (
@@ -282,16 +268,15 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                 <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden mb-6">
                     <div className="bg-orange-50 px-6 py-3 border-b border-orange-100 flex justify-between items-center text-orange-800">
                         <h3 className="font-bold font-nepali flex items-center gap-2"><Clock size={18} /> कारबाहीको लागि बाँकी</h3>
-                        <span className="bg-orange-200 text-xs font-bold px-2 py-0.5 rounded-full">{actionableForms.length}</span>
                     </div>
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-600 font-medium">
+                        <thead className="bg-slate-50 text-slate-600">
                             <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Requested By</th><th className="px-6 py-3">Date</th><th className="px-6 py-3 text-right">Action</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {actionableForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-mono font-medium text-slate-700">#{f.formNo}</td>
+                                <tr key={f.id} className="hover:bg-slate-50/50">
+                                    <td className="px-6 py-4 font-mono font-bold text-slate-700">#{f.formNo}</td>
                                     <td className="px-6 py-4">{f.demandBy?.name}</td>
                                     <td className="px-6 py-4 font-nepali">{f.date}</td>
                                     <td className="px-6 py-4 text-right">
@@ -305,15 +290,47 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             )}
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2"><FileText size={18} /> इतिहास (History)</div>
+                <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2"><FileText size={18} /> फारम इतिहास (History)</div>
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-medium">
+                    <thead className="bg-slate-50 text-slate-500">
                         <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Date</th><th className="px-6 py-3">Status</th><th className="px-6 py-3 text-right">Action</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {historyForms.map(f => (
-                            <tr key={f.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-mono font-bold">#{f.formNo}</td><td className="px-6 py-3 font-nepali">{f.date}</td><td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${f.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{f.status}</span></td><td className="px-6 py-3 text-right"><button onClick={() => handleLoadForm(f, true)} className="text-slate-400 hover:text-primary-600 p-2"><Eye size={18} /></button></td></tr>
-                        ))}
+                        {historyForms.map(f => {
+                            const isNewUpdate = f.isViewedByRequester === false && f.demandBy?.name === currentUser.fullName;
+                            return (
+                                <tr key={f.id} className={`hover:bg-slate-50 ${isNewUpdate ? 'bg-primary-50/30' : ''}`}>
+                                    <td className="px-6 py-3 font-mono font-bold">#{f.formNo}</td>
+                                    <td className="px-6 py-3 font-nepali">{f.date}</td>
+                                    <td className="px-6 py-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                f.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : 
+                                                f.status === 'Verified' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                f.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                'bg-orange-50 text-orange-700 border-orange-200'
+                                            }`}>
+                                                {f.status}
+                                            </span>
+                                            {isNewUpdate && (
+                                                <span className="flex h-5 items-center gap-1 animate-pulse">
+                                                    <span className="h-2 w-2 rounded-full bg-red-500"></span>
+                                                    <span className="text-[10px] font-bold text-red-600 uppercase">NEW</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-3 text-right">
+                                        <button onClick={() => handleLoadForm(f, true)} className={`p-2 rounded-full transition-colors ${isNewUpdate ? 'text-primary-600 bg-primary-100 hover:bg-primary-200' : 'text-slate-400 hover:text-primary-600'}`} title="Preview">
+                                            <Eye size={18} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {historyForms.length === 0 && (
+                            <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">कुनै माग फारम भेटिएन।</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -326,7 +343,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
        <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm no-print">
           <div className="flex items-center gap-3">
               <button onClick={handleReset} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
-              <h2 className="font-bold text-slate-700 font-nepali text-lg">माग फारम भर्नुहोस्</h2>
+              <h2 className="font-bold text-slate-700 font-nepali text-lg">{isViewOnly ? 'माग फारम प्रिभ्यु' : 'माग फारम भर्नुहोस्'}</h2>
           </div>
           <div className="flex gap-2">
             {!isViewOnly && (
@@ -341,17 +358,13 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
        </div>
 
        {validationError && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start gap-3 animate-in slide-in-from-top-2 no-print">
-                <div className="text-red-500 mt-0.5">
-                    <AlertCircle size={24} />
-                </div>
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start gap-3 animate-in slide-in-from-top-2 no-print mx-auto max-w-[210mm]">
+                <div className="text-red-500 mt-0.5"><AlertCircle size={24} /></div>
                 <div className="flex-1">
-                    <h3 className="text-red-800 font-bold text-sm">विवरण भर्नुहोस् (Required Information)</h3>
-                    <p className="text-red-700 text-sm mt-1 whitespace-pre-line leading-relaxed font-nepali">{validationError}</p>
+                    <h3 className="text-red-800 font-bold text-sm">त्रुटि (Validation Error)</h3>
+                    <p className="text-red-700 text-sm mt-1 font-nepali">{validationError}</p>
                 </div>
-                <button onClick={() => setValidationError(null)} className="text-red-400 hover:text-red-600 transition-colors">
-                    <X size={20} />
-                </button>
+                <button onClick={() => setValidationError(null)} className="text-red-400 hover:text-red-600"><X size={20} /></button>
             </div>
        )}
 
@@ -360,7 +373,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           
           <div className="mb-6">
               <div className="flex items-start justify-between">
-                  <div className="w-24 pt-2 flex justify-start">
+                  <div className="w-24 flex justify-start pt-1">
                       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" alt="Nepal Emblem" className="h-20 w-20 object-contain" />
                   </div>
                   <div className="flex-1 text-center">
@@ -398,8 +411,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                             inputClassName="!border-none !bg-transparent !p-0 !text-right !font-bold !h-auto !shadow-none !ring-0 border-b border-dotted border-slate-800 rounded-none w-full"
                             disabled={isViewOnly || !isNewForm}
                             popupAlign="right"
-                            minDate={todayBS}
-                            maxDate={todayBS}
                         />
                       </div>
                   </div>
@@ -454,7 +465,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                 disabled={isViewOnly || !isNewForm || item.isFromInventory} 
                                 value={item.specification} 
                                 onChange={e => updateItem(item.id, 'specification', e.target.value)} 
-                                className={`w-full text-left outline-none bg-transparent px-1 ${item.isFromInventory ? 'text-slate-400 cursor-not-allowed italic' : ''}`} 
+                                className={`w-full text-left outline-none bg-transparent px-1 ${item.isFromInventory ? 'text-slate-400 italic cursor-not-allowed' : ''}`} 
                               />
                           </td>
                           <td className="border border-slate-800 p-1">
@@ -473,41 +484,29 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                           </td>
                           <td className="border border-slate-800 p-1 no-print">
                               {!isViewOnly && isNewForm && (
-                                <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 p-1 flex items-center justify-center w-full transition-colors">
+                                <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 p-1 flex items-center justify-center w-full transition-all">
                                     <Trash2 size={14} />
                                 </button>
                               )}
                           </td>
                       </tr>
                   ))}
-                  {/* Empty rows to maintain table height during print if needed */}
-                  {isViewOnly && items.length < 5 && Array.from({ length: 5 - items.length }).map((_, i) => (
-                      <tr key={`empty-${i}`} className="min-h-[30px] h-[30px]">
-                          <td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1 no-print"></td>
-                      </tr>
-                  ))}
               </tbody>
           </table>
 
           {isNewForm && items.length < 14 && (
-            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200 hover:bg-primary-100 transition-all">
+            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200 hover:bg-primary-100">
                 <Plus size={12} /> थप्नुहोस् (Add Row)
             </button>
-          )}
-
-          {isNewForm && items.length >= 14 && (
-            <div className="mt-2 no-print text-[10px] text-orange-600 font-bold italic">
-                * अधिकतम १४ वटा लहर मात्र थप्न सकिन्छ।
-            </div>
           )}
 
           <div className="mt-8 text-[11px] grid grid-cols-12 gap-y-10">
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">माग गर्नेको:</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} className={inputReadOnlyClass} disabled={true}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} className={inputReadOnlyClass} disabled={true}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} className={inputReadOnlyClass} disabled={true}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} className={inputReadOnlyClass} disabled/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} className={inputReadOnlyClass} disabled/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} className={inputReadOnlyClass} disabled/></div>
                       <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className={isViewOnly || !isNewForm ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isNewForm}/></div>
                   </div>
               </div>
@@ -525,12 +524,12 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                   <div className="font-bold mb-2">स्टोरकिपरले भर्ने:</div>
                   <div className="space-y-1 mb-4">
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800 transition-transform active:scale-90`}>{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14} className="text-slate-300"/>}</button>
-                        <span className={!isVerifying ? 'text-slate-400' : 'font-medium'}>क) बजारबाट खरिद गर्नु पर्ने</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14}/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : ''}>क) बजारबाट खरिद गर्नु पर्ने</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800 transition-transform active:scale-90`}>{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14} className="text-slate-300"/>}</button>
-                        <span className={!isVerifying ? 'text-slate-400' : 'font-medium'}>ख) मौज्दातमा रहेको</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14}/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : ''}>ख) मौज्दातमा रहेको</span>
                       </div>
                   </div>
                   <div className="space-y-1">
