@@ -21,6 +21,13 @@ export interface LoginFormData {
   password: string;
 }
 
+// Added missing LoginFormProps interface to resolve error in components/LoginForm.tsx
+export interface LoginFormProps {
+  users: User[];
+  onLoginSuccess: (user: User, fiscalYear: string) => void;
+  initialFiscalYear: string;
+}
+
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'STAFF' | 'STOREKEEPER' | 'ACCOUNT' | 'APPROVAL';
 
 export interface User {
@@ -63,6 +70,7 @@ export interface RabiesPatient {
   id: string;
   fiscalYear: string; 
   regNo: string;
+  regNo_numeric?: number; // helper for generation
   regMonth: string; 
   regDateBs: string; 
   regDateAd: string; 
