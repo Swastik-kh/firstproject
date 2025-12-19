@@ -120,7 +120,6 @@ const App: React.FC = () => {
           if (!requestSnap.exists()) return;
           const request: StockEntryRequest = requestSnap.val();
           
-          // 1. Get Latest Inventory to ensure we have the most current quantities
           const invAllSnap = await get(ref(db, 'inventory'));
           const currentInvData = invAllSnap.val() || {};
           const currentInvList: InventoryItem[] = Object.keys(currentInvData).map(k => ({ ...currentInvData[k], id: k }));
@@ -128,9 +127,8 @@ const App: React.FC = () => {
           const updates: Record<string, any> = {};
           const dakhilaItems: DakhilaItem[] = [];
 
-          // 2. Prepare updates for each item
           for (const item of request.items) {
-              // Exact item match logic: Name + Store + Type
+              // 1. Identify Existing Item in specific store
               const existingItem = currentInvList.find(i => 
                   i.itemName.trim().toLowerCase() === item.itemName.trim().toLowerCase() && 
                   i.storeId === request.storeId &&
@@ -144,7 +142,7 @@ const App: React.FC = () => {
               const incomingVatAmount = incomingExclVat * (incomingTax / 100);
               const incomingTotal = incomingExclVat + incomingVatAmount;
 
-              // Data for Formal Report
+              // 2. Prepare Data for Formal Dakhila Report (Form 403)
               dakhilaItems.push({
                   id: Date.now() + Math.random(),
                   name: item.itemName,
@@ -163,14 +161,14 @@ const App: React.FC = () => {
               });
 
               if (existingItem) {
-                  // UPDATE EXISTING ITEM
+                  // UPDATE: Merge New Quantities and Update Info
                   const newQty = (Number(existingItem.currentQuantity) || 0) + incomingQty;
                   const newVal = (Number(existingItem.totalAmount) || 0) + incomingTotal;
                   
                   updates[`inventory/${existingItem.id}`] = {
-                      ...existingItem,
-                      ...item, // Update meta info from latest entry
-                      id: existingItem.id, // KEEP ORIGINAL ID
+                      ...existingItem, // Keep old properties first
+                      ...item,         // Overwrite with new metadata (Ledger Page, Batch, Expiry etc)
+                      id: existingItem.id, 
                       currentQuantity: newQty,
                       totalAmount: newVal,
                       lastUpdateDateBs: request.requestDateBs,
@@ -181,7 +179,7 @@ const App: React.FC = () => {
                       dakhilaNo: request.items[0]?.dakhilaNo || existingItem.dakhilaNo
                   };
               } else {
-                  // CREATE NEW ITEM
+                  // CREATE: Fresh Entry
                   const newId = `ITEM-${Date.now()}-${Math.random().toString(36).substring(7)}`;
                   updates[`inventory/${newId}`] = {
                       ...item,
@@ -191,16 +189,17 @@ const App: React.FC = () => {
                       lastUpdateDateAd: request.requestDateAd,
                       receiptSource: request.receiptSource,
                       fiscalYear: request.fiscalYear,
-                      storeId: request.storeId
+                      storeId: request.storeId,
+                      dakhilaNo: request.items[0]?.dakhilaNo || item.dakhilaNo
                   };
               }
           }
 
-          // 3. Mark request as Approved
+          // 3. Update Request Status
           updates[`stockRequests/${requestId}/status`] = 'Approved';
           updates[`stockRequests/${requestId}/approvedBy`] = approverName;
 
-          // 4. Archive as Formal Dakhila Report
+          // 4. Create Official Dakhila Report
           const formalDakhilaId = `DA-${Date.now()}`;
           const formalReport: DakhilaPratibedanEntry = {
               id: formalDakhilaId,
@@ -215,13 +214,10 @@ const App: React.FC = () => {
           };
           updates[`dakhilaReports/${formalDakhilaId}`] = formalReport;
 
-          // Perform atomic update
           await update(ref(db), updates);
-          console.log("Approval and Stock Update successful.");
-
       } catch (error) {
-          console.error("Error during stock approval:", error);
-          alert("अनुमोदन प्रक्रियामा समस्या आयो। कृपया पुनः प्रयास गर्नुहोस्।");
+          console.error("Critical Error during stock approval:", error);
+          alert("सिस्टममा समस्या आयो। विवरणहरू सुरक्षित हुन सकेनन्।");
       }
   };
 
