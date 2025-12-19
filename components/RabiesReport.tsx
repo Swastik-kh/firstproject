@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Printer, Calendar, Save, Calculator, Filter, Package } from 'lucide-react';
 import { Select } from './Select';
@@ -32,7 +33,7 @@ export const RabiesReport: React.FC<RabiesReportProps> = ({ currentFiscalYear, c
 
   const animals = [
     'Dog bite', 'Monkey bite', 'Cat bite', 'Cattle bite', 'Rodent bite', 
-    'Jackal bite', 'Tiger bite', 'Bear bite', 'Saliva contact', 'Other specity'
+    'Jackal bite', 'Tiger bite', 'Bear bite', 'Saliva contact', 'Other specify'
   ];
 
   const rowLabels = [
@@ -58,16 +59,17 @@ export const RabiesReport: React.FC<RabiesReportProps> = ({ currentFiscalYear, c
         }
 
         let colIndex = -1;
+        // Updated mapping to match exactly with the new values from registration
         switch(p.animalType) {
-            case 'Dog': colIndex = 0; break;
-            case 'Monkey': colIndex = 1; break;
-            case 'Cat': colIndex = 2; break;
-            case 'Cattle': colIndex = 3; break;
-            case 'Rodent': colIndex = 4; break;
-            case 'Jackal': colIndex = 5; break;
-            case 'Tiger': colIndex = 6; break;
-            case 'Bear': colIndex = 7; break;
-            case 'Saliva Contact': colIndex = 8; break;
+            case 'Dog bite': colIndex = 0; break;
+            case 'Monkey bite': colIndex = 1; break;
+            case 'Cat bite': colIndex = 2; break;
+            case 'Cattle bite': colIndex = 3; break;
+            case 'Rodent bite': colIndex = 4; break;
+            case 'Jackal bite': colIndex = 5; break;
+            case 'Tiger bite': colIndex = 6; break;
+            case 'Bear bite': colIndex = 7; break;
+            case 'Saliva contact': colIndex = 8; break;
             default: colIndex = 9;
         }
 

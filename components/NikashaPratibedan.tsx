@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useMemo } from 'react';
 import { FileOutput, ChevronRight, ArrowLeft, Printer, CheckCircle2, ShieldCheck, X, Clock, Eye, Send, FileText, AlertCircle } from 'lucide-react';
 import { IssueReportEntry, MagItem, User, OrganizationSettings } from '../types';
@@ -29,7 +30,8 @@ export const NikashaPratibedan: React.FC<NikashaPratibedanProps> = ({ reports, o
     // Form State for display/editing
     const [reportDetails, setReportDetails] = useState({
         fiscalYear: '',
-        magFormNo: 0,
+        // Fix: magFormNo must be string to match IssueReportEntry and for correct type inference
+        magFormNo: '',
         requestDate: '', 
         issueNo: '',     
         issueDate: '',   
@@ -300,7 +302,8 @@ export const NikashaPratibedan: React.FC<NikashaPratibedanProps> = ({ reports, o
         if (isStoreKeeper) return report.status === 'Pending'; // Storekeeper needs to prepare
         if (isApprover) return report.status === 'Pending Approval'; // Admin needs to approve
         return false;
-    }).sort((a, b) => b.magFormNo - a.magFormNo);
+        // Fix: Changed arithmetic operation to use parseInt for string magFormNo
+    }).sort((a, b) => parseInt(b.magFormNo) - parseInt(a.magFormNo));
 
     // 2. History (Completed/Rejected)
     const historyReports = reports.filter(report => {
@@ -310,7 +313,8 @@ export const NikashaPratibedan: React.FC<NikashaPratibedanProps> = ({ reports, o
         }
         // Others see Final + Rejected
         return ['Issued', 'Rejected'].includes(report.status);
-    }).sort((a, b) => b.magFormNo - a.magFormNo);
+        // Fix: Changed arithmetic operation to use parseInt for string magFormNo
+    }).sort((a, b) => parseInt(b.magFormNo) - parseInt(a.magFormNo));
 
 
     // Render Form

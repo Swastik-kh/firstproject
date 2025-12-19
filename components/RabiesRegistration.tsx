@@ -32,6 +32,19 @@ const nepaliMonthOptions = [
   { id: '12', value: '12', label: 'चैत्र (12)' },
 ];
 
+const animalTypeOptions: Option[] = [
+    { id: 'dog', value: 'Dog bite', label: 'कुकुरले टोकेको (Dog bite)' },
+    { id: 'monkey', value: 'Monkey bite', label: 'बाँदरले टोकेको (Monkey bite)' },
+    { id: 'cat', value: 'Cat bite', label: 'बिरालोले टोकेको (Cat bite)' },
+    { id: 'cattle', value: 'Cattle bite', label: 'चौपायाले टोकेको (Cattle bite)' },
+    { id: 'rodent', value: 'Rodent bite', label: 'मुसा/लोखर्के (Rodent bite)' },
+    { id: 'jackal', value: 'Jackal bite', label: 'स्यालले टोकेको (Jackal bite)' },
+    { id: 'tiger', value: 'Tiger bite', label: 'बाघले टोकेको (Tiger bite)' },
+    { id: 'bear', value: 'Bear bite', label: 'भालुले टोकेको (Bear bite)' },
+    { id: 'saliva', value: 'Saliva contact', label: 'र्‍याल लसपस (Saliva contact)' },
+    { id: 'other', value: 'Other specify', label: 'अन्य (Other specify)' },
+];
+
 export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({ 
   currentFiscalYear, 
   patients, 
@@ -338,7 +351,7 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
                   label="टोक्ने जनावर"
                   value={formData.animalType}
                   onChange={e => setFormData({...formData, animalType: e.target.value})}
-                  options={[{id:'dog',value:'Dog',label:'कुकुर'}, {id:'monkey',value:'Monkey',label:'बाँदर'}, {id:'cat',value:'Cat',label:'विरालो'}, {id:'other',value:'Other',label:'अन्य'}]}
+                  options={animalTypeOptions}
                   required
               />
 

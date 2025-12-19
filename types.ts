@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 export interface FiscalYear {
@@ -404,12 +405,6 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
   placeholder?: string;
 }
 
-export interface LoginFormProps {
-  users: User[];
-  onLoginSuccess: (user: User, fiscalYear: string) => void;
-  initialFiscalYear?: string;
-}
-
 export interface DashboardProps {
   onLogout: () => void;
   currentUser: User;
@@ -437,7 +432,8 @@ export interface DashboardProps {
   rabiesPatients: RabiesPatient[];
   onAddRabiesPatient: (patient: RabiesPatient) => void;
   onUpdateRabiesPatient: (patient: RabiesPatient) => void;
-  onDeleteRabiesPatient: (patientId: string) => void; 
+  // Renamed from onDeleteRabiesPatient to onDeletePatient to fix destructuring error in Dashboard.tsx
+  onDeletePatient: (patientId: string) => void; 
 
   firms: FirmEntry[];
   onAddFirm: (firm: FirmEntry) => void;

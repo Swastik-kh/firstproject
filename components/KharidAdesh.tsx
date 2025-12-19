@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { ShoppingCart, FilePlus, ChevronRight, ArrowLeft, Printer, Save, Calculator, CheckCircle2, Send, ShieldCheck, CheckCheck, Eye, FileText, Clock, Archive, AlertCircle, X } from 'lucide-react';
 import { PurchaseOrderEntry, MagItem, User, FirmEntry, Option, QuotationEntry, OrganizationSettings } from '../types';
@@ -323,7 +324,8 @@ export const KharidAdesh: React.FC<KharidAdeshProps> = ({ orders, currentFiscalY
         if (isAccount) return order.status === 'Account Verified' || order.status === 'Generated' || order.status === 'Stock Entry Requested' || order.status === 'Completed';
         if (isAdmin) return order.status === 'Generated' || order.status === 'Stock Entry Requested' || order.status === 'Completed';
         return false;
-    }).sort((a, b) => b.magFormNo - a.magFormNo);
+        // Fix: Changed subtraction to parseInt subtraction for string magFormNo
+    }).sort((a, b) => parseInt(b.magFormNo) - parseInt(a.magFormNo));
 
     const canEditVendor = isStoreKeeper && !isViewOnlyMode && selectedOrder?.status === 'Pending';
     
