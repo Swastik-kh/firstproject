@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
@@ -21,6 +20,26 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
   
+  // Helper to generate formatted Mag Form No (e.g., 001-MF)
+  const generateMagFormNo = (forms: MagFormEntry[], fy: string) => {
+    const fyForms = forms.filter(f => f.fiscalYear === fy);
+    if (fyForms.length === 0) return "001-MF";
+    
+    const maxNo = fyForms.reduce((max, f) => {
+        // Handle both old numeric and new string formats
+        let val = 0;
+        if (typeof f.formNo === 'string') {
+            const parts = f.formNo.split('-');
+            val = parseInt(parts[0]);
+        } else {
+            val = f.formNo;
+        }
+        return isNaN(val) ? max : Math.max(max, val);
+    }, 0);
+    
+    return `${String(maxNo + 1).padStart(3, '0')}-MF`;
+  };
+
   // Calculate Today in Nepali for Restrictions
   const todayBS = useMemo(() => {
     try {
@@ -36,7 +55,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     id: '',
     items: [],
     fiscalYear: currentFiscalYear,
-    formNo: 1,
+    formNo: '', // Will be set on reset or effect
     date: todayBS, // Default to today
     status: 'Pending',
     demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
@@ -47,16 +66,26 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     approvedBy: { name: '', designation: '', date: '' }
   });
 
+  // Set initial form number for a new form
+  useEffect(() => {
+    if (!editingId && !formDetails.id) {
+        setFormDetails(prev => ({
+            ...prev,
+            formNo: generateMagFormNo(existingForms, currentFiscalYear)
+        }));
+    }
+  }, [editingId, existingForms, currentFiscalYear]);
+
   const isStoreKeeper = currentUser.role === 'STOREKEEPER';
   const isAdminOrApproval = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
 
   // All actionable forms for admins/storekeepers
   const actionableForms = useMemo(() => {
       if (isStoreKeeper) {
-          return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.formNo - a.formNo);
+          return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
       }
       if (isAdminOrApproval) {
-          return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.formNo - a.formNo);
+          return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
       }
       return [];
   }, [existingForms, isStoreKeeper, isAdminOrApproval]);
@@ -64,9 +93,9 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   // History accessible to all users
   const historyForms = useMemo(() => {
       if (isAdminOrApproval || isStoreKeeper) {
-          return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.formNo - a.formNo);
+          return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.id.localeCompare(a.id));
       }
-      return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.formNo - a.formNo);
+      return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.id.localeCompare(a.id));
   }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
 
   const itemOptions = useMemo(() => inventoryItems.map(item => ({
@@ -121,7 +150,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
     const newForm: MagFormEntry = {
         ...formDetails,
-        id: editingId === 'new' ? Date.now().toString() : (editingId || Date.now().toString()),
+        id: editingId === 'new' || !editingId ? Date.now().toString() : editingId,
         items,
         status: nextStatus
     };
@@ -138,7 +167,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         id: '',
         items: [],
         fiscalYear: currentFiscalYear,
-        formNo: existingForms.length + 1,
+        formNo: generateMagFormNo(existingForms, currentFiscalYear),
         date: todayBS,
         status: 'Pending',
         demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
@@ -283,22 +312,32 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
               <h2 className="text-lg font-bold underline underline-offset-4 pt-4">माग फारम</h2>
           </div>
 
-          <div className="flex justify-between items-end mb-6">
+          <div className="flex justify-between items-start mb-6">
               <div className="font-bold">आर्थिक वर्ष: <span className="border-b border-dotted border-slate-800 px-2">{currentFiscalYear}</span></div>
-              <div className="flex items-center gap-2">
-                  <span className="font-bold">मिति:</span>
-                  <NepaliDatePicker
-                    value={formDetails.date}
-                    onChange={(val) => setFormDetails({ ...formDetails, date: val })}
-                    format="YYYY/MM/DD"
-                    label=""
-                    hideIcon={true}
-                    inputClassName="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold placeholder:text-slate-400 placeholder:font-normal rounded-none px-0 py-0 h-auto focus:ring-0 focus:border-slate-800"
-                    wrapperClassName="w-32"
-                    disabled={isViewOnly || (editingId && editingId !== 'new' && !isAdminOrApproval && !isStoreKeeper)}
-                    minDate={todayBS}
-                    maxDate={todayBS}
-                  />
+              <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                      <span className="font-bold">माग फारम नं:</span>
+                      <input 
+                        value={formDetails.formNo} 
+                        readOnly 
+                        className="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold text-red-600"
+                      />
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <span className="font-bold">मिति:</span>
+                      <NepaliDatePicker
+                        value={formDetails.date}
+                        onChange={(val) => setFormDetails({ ...formDetails, date: val })}
+                        format="YYYY/MM/DD"
+                        label=""
+                        hideIcon={true}
+                        inputClassName="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold placeholder:text-slate-400 placeholder:font-normal rounded-none px-0 py-0 h-auto focus:ring-0 focus:border-slate-800"
+                        wrapperClassName="w-32"
+                        disabled={isViewOnly || (editingId && editingId !== 'new' && !isAdminOrApproval && !isStoreKeeper)}
+                        minDate={todayBS}
+                        maxDate={todayBS}
+                      />
+                  </div>
               </div>
           </div>
 

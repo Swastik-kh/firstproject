@@ -106,7 +106,7 @@ export interface StoreKeeperSignature {
 export interface MagFormEntry {
   id: string;
   fiscalYear: string;
-  formNo: number;
+  formNo: string; // Changed from number to string for format like 001-DA
   date: string;
   items: MagItem[];
   status?: 'Pending' | 'Verified' | 'Approved' | 'Rejected';
@@ -126,7 +126,7 @@ export interface MagFormEntry {
 export interface PurchaseOrderEntry {
   id: string;
   magFormId: string; // Reference to the original demand form
-  magFormNo: number;
+  magFormNo: string; // Changed from number to string
   requestDate: string;
   items: MagItem[]; // Items to be purchased
   status: 'Pending' | 'Pending Account' | 'Account Verified' | 'Generated' | 'Stock Entry Requested' | 'Completed';
@@ -155,7 +155,7 @@ export interface PurchaseOrderEntry {
 export interface IssueReportEntry {
   id: string;
   magFormId: string; // Reference to the original demand form
-  magFormNo: number;
+  magFormNo: string; // Changed from number to string
   requestDate: string; // Date of the original demand form (original demand date)
   issueNo?: string; // New: Unique ID for this Issue Report
   issueDate?: string; // New: Date this report was generated/issued (today's date)
