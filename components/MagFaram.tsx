@@ -40,7 +40,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
   const todayBS = useMemo(() => {
     try {
-      /* Changed format from YYYY.MM.DD to YYYY-MM-DD to match NepaliDatePicker's allowed types */
+      /* Format matches YYYY-MM-DD for consistency with date picker */
       return new NepaliDate().format('YYYY-MM-DD');
     } catch (e) {
       return '';
@@ -254,13 +254,15 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                         <NepaliDatePicker 
                             value={formDetails.date} 
                             onChange={val => setFormDetails({...formDetails, date: val})}
-                            /* Changed format from YYYY.MM.DD to YYYY-MM-DD to fix type error */
                             format="YYYY-MM-DD"
                             label=""
                             hideIcon={true}
                             inputClassName="!border-none !bg-transparent !p-0 !text-right !font-bold !h-auto !shadow-none !ring-0 border-b border-dotted border-slate-800 rounded-none w-full"
                             disabled={isViewOnly}
                             popupAlign="right"
+                            /* Restricted selection to today only as requested */
+                            minDate={todayBS}
+                            maxDate={todayBS}
                         />
                       </div>
                   </div>
