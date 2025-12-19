@@ -36,12 +36,13 @@ const getTodayDateAd = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Helper to calculate total amount
-const calculateTotalAmount = (quantity: string, rate: string, tax: string): number => {
-  const qty = parseFloat(quantity) || 0;
-  const rt = parseFloat(rate) || 0;
-  const tx = parseFloat(tax) || 0;
-  return qty * rt * (1 + tx / 100);
+// Helper to calculate total amount with NaN protection
+const calculateTotalAmount = (quantity: string | number, rate: string | number, tax: string | number): number => {
+  const qty = parseFloat(quantity.toString()) || 0;
+  const rt = parseFloat(rate.toString()) || 0;
+  const tx = parseFloat(tax.toString()) || 0;
+  const total = qty * rt * (1 + tx / 100);
+  return isNaN(total) ? 0 : total;
 };
 
 // Common options for item types
@@ -100,10 +101,7 @@ const EditInventoryItemModal: React.FC<EditInventoryItemModalProps> = ({
             
             // Auto recalc total if rate/qty changes
             if (['currentQuantity', 'rate', 'tax'].includes(field as string)) {
-                const qty = parseFloat((updated.currentQuantity || 0).toString());
-                const rt = parseFloat((updated.rate || 0).toString());
-                const tx = parseFloat((updated.tax || 0).toString());
-                updated.totalAmount = calculateTotalAmount(qty.toString(), rt.toString(), tx.toString());
+                updated.totalAmount = calculateTotalAmount(updated.currentQuantity || 0, updated.rate || 0, updated.tax || 0);
             }
             return updated;
         });
@@ -194,6 +192,7 @@ interface BulkInventoryEntryModalProps {
       commonStoreId: string, 
       commonSupplier: string, 
       commonRefNo: string,    
+      commonDakhilaNo: string,
       mode: 'opening' | 'add'
   ) => void;
   inventoryItems: InventoryItem[];
@@ -224,16 +223,20 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
 
     const initialDakhilaNo = useMemo(() => {
         if (mode !== 'add') return '';
-        const fyClean = currentFiscalYear.replace('/', '');
-        const maxNum = inventoryItems
-            .filter(item => item.dakhilaNo && String(item.dakhilaNo).startsWith(`D-${fyClean}-`))
-            .map(item => {
-                const parts = String(item.dakhilaNo).split('-');
-                return parts.length > 2 ? parseInt(parts[2]) : 0;
-            })
-            .reduce((max, current) => Math.max(max, current), 0);
         
-        return `D-${fyClean}-${String(maxNum + 1).padStart(3, '0')}`;
+        // Filter items in the current fiscal year that have a dakhilaNo in XXXX-DA format
+        const fyItems = inventoryItems.filter(item => item.fiscalYear === currentFiscalYear && item.dakhilaNo);
+        
+        const maxNum = fyItems.reduce((max, item) => {
+            const parts = String(item.dakhilaNo).split('-');
+            if (parts.length >= 2 && parts[1] === 'DA') {
+                const num = parseInt(parts[0]);
+                return isNaN(num) ? max : Math.max(max, num);
+            }
+            return max;
+        }, 0);
+        
+        return `${String(maxNum + 1).padStart(4, '0')}-DA`;
     }, [currentFiscalYear, inventoryItems, mode]);
 
     const [commonDetails, setCommonDetails] = useState({
@@ -294,14 +297,16 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
 
             const itemsFromPo = initialData.items.map((poItem: any) => {
                 const newItem = createEmptyBulkItem(mode, initialStoreId);
+                const qty = parseFloat(poItem.quantity.toString()) || 0;
+                const rt = parseFloat(poItem.rate?.toString() || '0') || 0;
                 return {
                     ...newItem,
                     itemName: poItem.name,
                     specification: poItem.specification || '',
                     unit: poItem.unit,
-                    currentQuantity: parseFloat(poItem.quantity) || 0,
-                    rate: parseFloat(poItem.rate) || 0, 
-                    totalAmount: (parseFloat(poItem.quantity) || 0) * (parseFloat(poItem.rate) || 0)
+                    currentQuantity: qty,
+                    rate: rt, 
+                    totalAmount: qty * rt
                 };
             });
             
@@ -392,10 +397,7 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                     const updatedItem = { ...item, [field]: value };
 
                     if (['currentQuantity', 'rate', 'tax'].includes(field as string)) {
-                        const qty = parseFloat((updatedItem.currentQuantity || 0).toString());
-                        const rt = parseFloat((updatedItem.rate || 0).toString());
-                        const tx = parseFloat((updatedItem.tax || 0).toString());
-                        updatedItem.totalAmount = calculateTotalAmount(qty.toString(), rt.toString(), tx.toString());
+                        updatedItem.totalAmount = calculateTotalAmount(updatedItem.currentQuantity || 0, updatedItem.rate || 0, updatedItem.tax || 0);
                     }
                     return updatedItem;
                 }
@@ -430,18 +432,15 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                         itemClassification: selectedInvItem.itemClassification || '',
                         specification: selectedInvItem.specification || '',
                         currentQuantity: row.currentQuantity,
-                        rate: row.rate,
-                        tax: row.tax
+                        rate: selectedInvItem.rate || 0,
+                        tax: selectedInvItem.tax || 0
                     };
 
                     if (!isFirstRow && masterType && updatedItem.itemType !== masterType) {
                         updatedItem.itemType = masterType;
                     }
 
-                    const qty = parseFloat((updatedItem.currentQuantity || 0).toString());
-                    const rt = parseFloat((updatedItem.rate || 0).toString());
-                    const tx = parseFloat((updatedItem.tax || 0).toString());
-                    updatedItem.totalAmount = calculateTotalAmount(qty.toString(), rt.toString(), tx.toString());
+                    updatedItem.totalAmount = calculateTotalAmount(updatedItem.currentQuantity || 0, updatedItem.rate || 0, updatedItem.tax || 0);
 
                     return updatedItem;
                 }
@@ -527,10 +526,7 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                     }
                 }
                 
-                const qty = parseFloat((updatedItem.currentQuantity || 0).toString());
-                const rt = parseFloat((updatedItem.rate || 0).toString());
-                const tx = parseFloat((updatedItem.tax || 0).toString());
-                updatedItem.totalAmount = calculateTotalAmount(qty.toString(), rt.toString(), tx.toString());
+                updatedItem.totalAmount = calculateTotalAmount(updatedItem.currentQuantity || 0, updatedItem.rate || 0, updatedItem.tax || 0);
 
                 return updatedItem;
             }
@@ -554,13 +550,12 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
             let previousDakhilaDate = '';
             let previousDakhilaNo = '';
 
-            const fyClean = currentFiscalYear.replace('/', '');
-            
+            // Filter for items in the current fiscal year to find the previous entry
             inventoryItems.forEach(item => {
-                if (item.dakhilaNo && item.dakhilaNo.includes(fyClean)) {
-                    const parts = item.dakhilaNo.split('-');
-                    if (parts.length >= 3) {
-                        const num = parseInt(parts[parts.length - 1]);
+                if (item.fiscalYear === currentFiscalYear && item.dakhilaNo) {
+                    const parts = String(item.dakhilaNo).split('-');
+                    if (parts.length >= 2 && parts[1] === 'DA') {
+                        const num = parseInt(parts[0]);
                         if (!isNaN(num) && num > maxDakhilaNum) {
                             maxDakhilaNum = num;
                             previousDakhilaDate = item.lastUpdateDateBs || ''; 
@@ -618,12 +613,10 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                 setValidationError(`क्रम संख्या ${itemNumber} मा एकाई आवश्यक छ। (Unit required for row ${itemNumber}.)`);
                 hasError = true;
             }
-            if (!item.currentQuantity || isNaN(item.currentQuantity) || item.currentQuantity <= 0) {
+            
+            const qtyNum = parseFloat(item.currentQuantity.toString()) || 0;
+            if (qtyNum <= 0) {
                 setValidationError(`क्रम संख्या ${itemNumber} मा मान्य परिमाण आवश्यक छ। (Valid Quantity required for row ${itemNumber}.)`);
-                hasError = true;
-            }
-            if ((item.rate !== undefined && item.rate !== null && isNaN(item.rate)) || (item.tax !== undefined && item.tax !== null && isNaN(item.tax))) {
-                setValidationError(`क्रम संख्या ${itemNumber} मा दर र कर मान्य संख्या हुनुपर्छ। (Rate and Tax must be valid numbers for row ${itemNumber}.)`);
                 hasError = true;
             }
 
@@ -661,6 +654,9 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                 }
             }
             
+            const rateNum = parseFloat(item.rate?.toString() || '0') || 0;
+            const taxNum = parseFloat(item.tax?.toString() || '0') || 0;
+
             return {
                 ...item,
                 itemName: item.itemName.trim(),
@@ -671,9 +667,10 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                 itemClassification: item.itemClassification?.trim() || "",
                 specification: item.specification?.trim() || "",
                 unit: item.unit.trim(),
-                currentQuantity: parseFloat(item.currentQuantity.toString()),
-                rate: item.rate !== undefined && item.rate !== null ? parseFloat(item.rate.toString()) : 0,
-                tax: item.tax !== undefined && item.tax !== null ? parseFloat(item.tax.toString()) : 0,
+                currentQuantity: qtyNum,
+                rate: rateNum,
+                tax: taxNum,
+                totalAmount: calculateTotalAmount(qtyNum, rateNum, taxNum),
                 batchNo: item.batchNo?.trim() || "",
                 expiryDateAd: item.expiryDateAd || "",
                 expiryDateBs: item.expiryDateBs || "",
@@ -701,6 +698,7 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
             commonDetails.storeId, 
             commonDetails.supplier, 
             commonDetails.refNo, 
+            commonDetails.dakhilaNo,
             mode
         );
         setIsSaving(false);
@@ -820,7 +818,7 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                             <Input
                                 label="आपूर्तिकर्ता / स्रोत (Supplier / Source)"
                                 value={commonDetails.supplier}
-                                onChange={e => handleCommonDetailsChange('supplier', e.target.value)}
+                                onChange={(e) => handleCommonDetailsChange('supplier', e.target.value)}
                                 placeholder="Supplier Name"
                                 icon={<User size={16} />}
                             />
@@ -829,7 +827,7 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                             <Input
                                 label="खरिद आदेश / हस्तान्तरण फारम नं"
                                 value={commonDetails.refNo}
-                                onChange={e => handleCommonDetailsChange('refNo', e.target.value)}
+                                onChange={(e) => handleCommonDetailsChange('refNo', e.target.value)}
                                 placeholder="PO / Hafa No"
                                 icon={<FileText size={16} />}
                             />
@@ -839,8 +837,8 @@ const BulkInventoryEntryModal: React.FC<BulkInventoryEntryModalProps> = ({
                                 <Input
                                     label="दाखिला नं (Dakhila No) *"
                                     value={commonDetails.dakhilaNo}
-                                    onChange={e => handleCommonDetailsChange('dakhilaNo', e.target.value)}
-                                    placeholder="D-081082-001"
+                                    onChange={(e) => handleCommonDetailsChange('dakhilaNo', e.target.value)}
+                                    placeholder="0001-DA"
                                     required
                                     icon={<Hash size={16} />}
                                     className="font-bold text-purple-700"
@@ -1162,7 +1160,7 @@ export const JinshiMaujdat: React.FC<JinshiMaujdatProps> = ({
       setSelectedItemForEdit(null);
   };
 
-  const handleBulkSave = (items: InventoryItem[], source: string, dateBs: string, dateAd: string, storeId: string, supplier: string, refNo: string, mode: 'opening' | 'add') => {
+  const handleBulkSave = (items: InventoryItem[], source: string, dateBs: string, dateAd: string, storeId: string, supplier: string, refNo: string, dakhilaNo: string, mode: 'opening' | 'add') => {
       const request: StockEntryRequest = {
           id: Date.now().toString(),
           requestDateBs: dateBs,
@@ -1172,7 +1170,14 @@ export const JinshiMaujdat: React.FC<JinshiMaujdatProps> = ({
           receiptSource: source,
           supplier: supplier,
           refNo: refNo,
-          items: items,
+          items: items.map(item => ({
+              ...item,
+              rate: Number(item.rate) || 0,
+              tax: Number(item.tax) || 0,
+              currentQuantity: Number(item.currentQuantity) || 0,
+              totalAmount: Number(item.totalAmount) || 0,
+              dakhilaNo: mode === 'add' ? dakhilaNo : item.dakhilaNo
+          })),
           status: 'Pending', 
           requestedBy: currentUser.username,
           requesterName: currentUser.fullName,
@@ -1181,6 +1186,8 @@ export const JinshiMaujdat: React.FC<JinshiMaujdatProps> = ({
       };
       onRequestStockEntry(request);
       
+      alert(`स्टक दाखिला अनुरोध सफलतापूर्वक पेश भयो। एडमिन स्वीकृतिको लागि पठाइएको छ। (Stock entry request submitted successfully. Sent for Admin Approval.)`);
+
       if (pendingPoDakhila && onClearPendingPoDakhila) {
           onClearPendingPoDakhila();
       }

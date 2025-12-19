@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Calendar, Printer, Search, BookOpen, Layers, ShieldCheck } from 'lucide-react';
 import { Select } from './Select';
 import { SearchableSelect } from './SearchableSelect';
-import { InventoryItem, IssueReportEntry, DakhilaPratibedanEntry, ReturnEntry, OrganizationSettings } from '../types';
+import { InventoryItem, IssueReportEntry, DakhilaPratibedanEntry, ReturnEntry, OrganizationSettings, StockEntryRequest } from '../types';
 import { FISCAL_YEARS } from '../constants';
 
 interface JinshiKhataProps {
@@ -12,6 +12,7 @@ interface JinshiKhataProps {
   issueReports: IssueReportEntry[];
   dakhilaReports: DakhilaPratibedanEntry[];
   returnEntries: ReturnEntry[];
+  stockEntryRequests: StockEntryRequest[]; // Added missing prop
   generalSettings: OrganizationSettings;
 }
 
@@ -49,6 +50,7 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
   issueReports,
   dakhilaReports,
   returnEntries,
+  stockEntryRequests = [],
   generalSettings
 }) => {
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(currentFiscalYear);
@@ -93,12 +95,11 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                 transactions.push({
                     id: `DAKHILA-${report.id}-${item.id}`,
                     date: report.date,
-                    refNo: report.dakhilaNo, // Just the number
+                    refNo: report.dakhilaNo, 
                     type: item.source === 'Opening' ? 'Opening' : 'Income',
                     qty: item.quantity,
                     rate: item.rate,
                     remarks: item.remarks || report.orderNo || '',
-                    // Non-Expendable Specifics
                     specification: item.specification,
                     source: item.source
                 });
@@ -106,10 +107,31 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
         });
     });
 
-    // B. Add Returns (INCOME)
+    // NEW: B. Add Entries from Approved Stock Requests (INCOME)
+    stockEntryRequests.forEach(req => {
+        if (req.status === 'Approved' && req.fiscalYear === selectedFiscalYear) {
+            req.items.forEach(item => {
+                if (item.itemName.trim().toLowerCase() === safeName) {
+                    transactions.push({
+                        id: `STKREQ-${req.id}-${item.id}`,
+                        date: req.requestDateBs,
+                        refNo: item.dakhilaNo || 'REQ-' + req.id.slice(-4),
+                        type: req.mode === 'opening' ? 'Opening' : 'Income',
+                        qty: item.currentQuantity,
+                        rate: item.rate || 0,
+                        remarks: item.remarks || req.receiptSource || '',
+                        specification: item.specification,
+                        source: req.receiptSource
+                    });
+                }
+            });
+        }
+    });
+
+    // C. Add Returns (INCOME)
     returnEntries.forEach(entry => {
         if (entry.fiscalYear !== selectedFiscalYear) return;
-        if (entry.status === 'Approved' || entry.status === 'Verified') {
+        if (entry.status === 'Approved') {
             entry.items.forEach(item => {
                 if (item.name.trim().toLowerCase() === safeName) {
                     transactions.push({
@@ -128,7 +150,7 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
         }
     });
 
-    // C. Add Issues (EXPENSE)
+    // D. Add Issues (EXPENSE)
     issueReports.forEach(report => {
         if (report.fiscalYear !== selectedFiscalYear) return;
         if (report.status === 'Issued') {
@@ -137,7 +159,7 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                     transactions.push({
                         id: `ISSUE-${report.id}-${item.id}`,
                         date: report.issueDate || report.requestDate,
-                        refNo: report.issueNo || report.magFormNo, // Prefer Issue No
+                        refNo: report.issueNo || report.magFormNo, 
                         type: 'Expense',
                         qty: parseFloat(item.quantity) || 0,
                         rate: item.rate || 0,
@@ -149,12 +171,12 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
         }
     });
 
-    // D. Sort by Date
+    // E. Sort by Date
     transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // E. Calculate Running Balance
+    // F. Calculate Running Balance
     let runningQty = 0;
-    let runningVal = 0; // Total Value
+    let runningVal = 0; 
     
     const rows: LedgerRow[] = transactions.map(txn => {
         const txnTotal = txn.qty * txn.rate;
@@ -167,11 +189,9 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
             runningVal -= txnTotal;
         }
 
-        // Avoid negative zero
         if (runningQty < 0) runningQty = 0;
         if (runningVal < 0) runningVal = 0;
 
-        // Calculate weighted average rate for balance
         const balRate = runningQty > 0 ? runningVal / runningQty : 0;
 
         return {
@@ -186,9 +206,8 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
             balRate: balRate,
             balTotal: runningVal,
             remarks: txn.remarks,
-            // Extra
             specification: txn.specification,
-            model: selectedItemDetail?.uniqueCode || '', // Using Unique Code as Model/ID proxy
+            model: selectedItemDetail?.uniqueCode || '', 
             serialNo: selectedItemDetail?.sanketNo || '',
             source: txn.source || selectedItemDetail?.receiptSource || '',
             country: '',
@@ -198,7 +217,7 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
 
     return rows;
 
-  }, [selectedItemName, selectedFiscalYear, dakhilaReports, issueReports, returnEntries, selectedItemDetail, ledgerType]);
+  }, [selectedItemName, selectedFiscalYear, dakhilaReports, stockEntryRequests, issueReports, returnEntries, selectedItemDetail, ledgerType]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
@@ -272,7 +291,7 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
         </div>
       </div>
 
-      {/* Report Container (A4 Landscape Optimized) */}
+      {/* Report Container */}
       <div className="bg-white p-4 md:p-8 rounded-xl shadow-lg w-full overflow-x-auto print:shadow-none print:p-0 print:max-w-none">
         
         {/* Header Section */}
@@ -380,22 +399,18 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                                     <td className="border border-slate-900 p-1 font-nepali whitespace-nowrap">{row.date}</td>
                                     <td className="border border-slate-900 p-1">{row.refNo}</td>
                                     
-                                    {/* Opening / Last FY Balance */}
                                     <td className="border border-slate-900 p-1">{row.type === 'Opening' ? row.qty : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Opening' ? row.rate : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Opening' ? row.total.toFixed(2) : ''}</td>
 
-                                    {/* Income */}
                                     <td className="border border-slate-900 p-1">{row.type === 'Income' ? row.qty : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Income' ? row.rate : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Income' ? row.total.toFixed(2) : ''}</td>
 
-                                    {/* Expense */}
                                     <td className="border border-slate-900 p-1 text-red-600">{row.type === 'Expense' ? row.qty : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Expense' ? row.rate : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Expense' ? row.total.toFixed(2) : ''}</td>
 
-                                    {/* Balance */}
                                     <td className="border border-slate-900 p-1 font-bold bg-slate-50">{row.balQty}</td>
                                     <td className="border border-slate-900 p-1 bg-slate-50">{row.balRate ? row.balRate.toFixed(2) : ''}</td>
                                     <td className="border border-slate-900 p-1 bg-slate-50">{row.balTotal.toFixed(2)}</td>
@@ -404,12 +419,6 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                                 </tr>
                             ))
                         )}
-                        {/* Blank Rows */}
-                        {[...Array(3)].map((_, i) => (
-                            <tr key={`blank-${i}`} className="h-6">
-                                {[...Array(14)].map((__, j) => <td key={j} className="border border-slate-900"></td>)}
-                            </tr>
-                        ))}
                     </tbody>
                 </table>
             </div>
@@ -432,7 +441,6 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                             <th className="border border-slate-900 p-1" rowSpan={2}>कैफियत</th>
                         </tr>
                         <tr className="bg-slate-50">
-                            {/* Asset Details */}
                             <th className="border border-slate-900 p-1">स्पेसिफिकेसन</th>
                             <th className="border border-slate-900 p-1">मोडल</th>
                             <th className="border border-slate-900 p-1">पहिचान नं</th>
@@ -440,17 +448,14 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                             <th className="border border-slate-900 p-1">आयु</th>
                             <th className="border border-slate-900 p-1">स्रोत</th>
                             
-                            {/* Income */}
                             <th className="border border-slate-900 p-1">परिमाण</th>
                             <th className="border border-slate-900 p-1">दर</th>
                             <th className="border border-slate-900 p-1">मूल्य</th>
                             
-                            {/* Expense */}
                             <th className="border border-slate-900 p-1">परिमाण</th>
                             <th className="border border-slate-900 p-1">दर</th>
                             <th className="border border-slate-900 p-1">मूल्य</th>
                             
-                            {/* Balance */}
                             <th className="border border-slate-900 p-1">परिमाण</th>
                             <th className="border border-slate-900 p-1">दर</th>
                             <th className="border border-slate-900 p-1">मूल्य</th>
@@ -468,7 +473,6 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                                     <td className="border border-slate-900 p-1 font-nepali whitespace-nowrap">{row.date}</td>
                                     <td className="border border-slate-900 p-1">{row.refNo}</td>
                                     
-                                    {/* Asset Details */}
                                     <td className="border border-slate-900 p-1 text-left px-1">{row.specification || '-'}</td>
                                     <td className="border border-slate-900 p-1">{row.model || '-'}</td>
                                     <td className="border border-slate-900 p-1">{row.serialNo || '-'}</td>
@@ -476,17 +480,14 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                                     <td className="border border-slate-900 p-1">{row.life || '-'}</td>
                                     <td className="border border-slate-900 p-1">{row.source || '-'}</td>
 
-                                    {/* Income */}
                                     <td className="border border-slate-900 p-1">{(row.type === 'Income' || row.type === 'Opening') ? row.qty : ''}</td>
                                     <td className="border border-slate-900 p-1">{(row.type === 'Income' || row.type === 'Opening') ? row.rate : ''}</td>
                                     <td className="border border-slate-900 p-1">{(row.type === 'Income' || row.type === 'Opening') ? row.total.toFixed(2) : ''}</td>
 
-                                    {/* Expense */}
                                     <td className="border border-slate-900 p-1 text-red-600">{row.type === 'Expense' ? row.qty : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Expense' ? row.rate : ''}</td>
                                     <td className="border border-slate-900 p-1">{row.type === 'Expense' ? row.total.toFixed(2) : ''}</td>
 
-                                    {/* Balance */}
                                     <td className="border border-slate-900 p-1 font-bold bg-slate-50">{row.balQty}</td>
                                     <td className="border border-slate-900 p-1 bg-slate-50">{row.balRate ? row.balRate.toFixed(2) : ''}</td>
                                     <td className="border border-slate-900 p-1 bg-slate-50">{row.balTotal.toFixed(2)}</td>
@@ -495,12 +496,6 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
                                 </tr>
                             ))
                         )}
-                        {/* Blank Rows */}
-                        {[...Array(3)].map((_, i) => (
-                            <tr key={`blank-${i}`} className="h-6">
-                                {[...Array(18)].map((__, j) => <td key={j} className="border border-slate-900"></td>)}
-                            </tr>
-                        ))}
                     </tbody>
                 </table>
             </div>
@@ -508,12 +503,8 @@ export const JinshiKhata: React.FC<JinshiKhataProps> = ({
 
         {/* Footer */}
         <div className="flex justify-between mt-12 text-sm font-medium">
-            <div className="text-center pt-8 border-t border-slate-400 w-48">
-                तयार गर्ने
-            </div>
-            <div className="text-center pt-8 border-t border-slate-400 w-48">
-                प्रमाणित गर्ने
-            </div>
+            <div className="text-center pt-8 border-t border-slate-400 w-48">तयार गर्ने</div>
+            <div className="text-center pt-8 border-t border-slate-400 w-48">प्रमाणित गर्ने</div>
         </div>
 
       </div>

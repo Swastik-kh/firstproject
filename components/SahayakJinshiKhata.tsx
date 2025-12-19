@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { User, InventoryItem, IssueReportEntry, ReturnEntry, OrganizationSettings, DakhilaPratibedanEntry } from '../types';
+import { User, InventoryItem, IssueReportEntry, ReturnEntry, OrganizationSettings, DakhilaPratibedanEntry, StockEntryRequest } from '../types';
 import { SearchableSelect } from './SearchableSelect';
 import { Printer, BookOpen, User as UserIcon, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -10,6 +10,7 @@ interface SahayakJinshiKhataProps {
   inventoryItems: InventoryItem[];
   issueReports: IssueReportEntry[];
   dakhilaReports: DakhilaPratibedanEntry[];
+  stockEntryRequests: StockEntryRequest[]; // Added missing prop
   users: User[];
   returnEntries: ReturnEntry[];
   generalSettings: OrganizationSettings;
@@ -42,6 +43,7 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
   inventoryItems,
   issueReports,
   dakhilaReports,
+  stockEntryRequests = [],
   users,
   returnEntries,
   generalSettings
@@ -70,42 +72,35 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
     const safeSelectedName = selectedPersonName.trim().toLowerCase();
 
     // 1. Get all APPROVED returns for this user
-    // We create a mutable pool of returned items to distribute against issues
     const userReturns = returnEntries.filter(r => 
         r.returnedBy?.name?.trim().toLowerCase() === safeSelectedName &&
         r.status === 'Approved'
     );
 
-    // Flatten returns into a list of items with their available quantities
-    // We make a deep copy or new object to allow modifying 'quantity' as we consume it (FIFO logic)
     let availableReturnPool = userReturns.flatMap(r => r.items.map(i => ({
         ...i,
-        quantity: parseFloat(i.quantity.toString()) || 0, // Ensure number
+        quantity: parseFloat(i.quantity.toString()) || 0,
         originalQuantity: parseFloat(i.quantity.toString()) || 0,
         returnDate: r.date,
-        receiver: r.approvedBy?.name || 'Store', // Who approved/received it
+        receiver: r.approvedBy?.name || 'Store',
         entryFormNo: r.formNo
     })));
 
-    // 2. Sort Issue Reports by Date (Oldest First) to ensure FIFO matching
+    // 2. Issue Reports
     const sortedReports = [...issueReports].sort((a, b) => 
         new Date(a.requestDate).getTime() - new Date(b.requestDate).getTime()
     );
 
-    // 3. Iterate through Issue Reports to build the Ledger
     sortedReports.forEach(report => {
-        // Filter by Status and Person
         if (!report.status || report.status.trim() !== 'Issued') return;
         const reportDemandName = report.demandBy?.name?.trim().toLowerCase() || '';
         
         if (reportDemandName === safeSelectedName) {
             report.items.forEach(item => {
-                // Find inventory details
                 const invItem = inventoryItems.find(i => 
                     i.itemName.trim().toLowerCase() === item.name.trim().toLowerCase()
                 );
                 
-                // Show in 412 if Non-Expendable (Asset)
                 const isReportNonExpendable = report.itemType === 'Non-Expendable';
                 const isInventoryNonExpendable = invItem && invItem.itemType === 'Non-Expendable';
 
@@ -135,53 +130,37 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
                         returnReceiver: undefined
                     };
 
-                    // --- RETURN MATCHING LOGIC (SUM & FIFO) ---
                     let matchedReturnQty = 0;
                     let lastReturnDate = '';
                     let receiverName = '';
 
-                    // Strategy A: Exact Match via Unique Code (If available)
                     if (newRow.idNo) {
-                        // Find returns with matching Code
-                        // For unique items, we assume 1-to-1 or total return
                         for (let i = 0; i < availableReturnPool.length; i++) {
                             const retItem = availableReturnPool[i];
-                            // Check code match and name match
                             if (retItem.quantity > 0 && 
                                 retItem.codeNo === newRow.idNo && 
                                 retItem.name.trim().toLowerCase() === newRow.name.trim().toLowerCase()) {
                                 
                                 const take = Math.min(retItem.quantity, issuedQty - matchedReturnQty);
                                 matchedReturnQty += take;
-                                retItem.quantity -= take; // Consume from pool
+                                retItem.quantity -= take;
                                 lastReturnDate = retItem.returnDate;
                                 receiverName = retItem.receiver;
-
-                                if (matchedReturnQty >= issuedQty) break; // Fully returned this issue
+                                if (matchedReturnQty >= issuedQty) break;
                             }
                         }
                     } 
                     
-                    // Strategy B: Name Match (FIFO) if no Unique Code or Code didn't match
                     if (matchedReturnQty < issuedQty) {
                         for (let i = 0; i < availableReturnPool.length; i++) {
                             const retItem = availableReturnPool[i];
-                            // Check Name Match ONLY (and ignore entries that have specific unique codes that don't match this row)
-                            // Ideally, if a return has a unique code, it should only match that code. 
-                            // But for generic matching, we match Name.
-                            
                             if (retItem.quantity > 0 && 
                                 retItem.name.trim().toLowerCase() === newRow.name.trim().toLowerCase()) {
-                                
-                                // How much more do we need to match for this issue line?
-                                const needed = issuedQty - matchedReturnQty;
-                                const take = Math.min(retItem.quantity, needed);
-                                
+                                const take = Math.min(retItem.quantity, issuedQty - matchedReturnQty);
                                 matchedReturnQty += take;
-                                retItem.quantity -= take; // Consume from pool
-                                lastReturnDate = retItem.returnDate; // Shows the latest return date if multiple
+                                retItem.quantity -= take;
+                                lastReturnDate = retItem.returnDate;
                                 receiverName = retItem.receiver;
-
                                 if (matchedReturnQty >= issuedQty) break;
                             }
                         }
@@ -192,26 +171,18 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
                         newRow.returnDate = lastReturnDate;
                         newRow.returnReceiver = receiverName;
                     }
-
                     rows.push(newRow);
                 }
             });
         }
     });
 
-    return rows; // Already sorted by issue date logic above
+    return rows;
   }, [selectedPersonName, issueReports, inventoryItems, returnEntries]);
 
-  // Logic for Clearance Check
   const isCompletelyCleared = useMemo(() => {
-      // If no user selected, logic doesn't apply
       if (!selectedPersonName) return false;
-
-      // Case 1: No records at all (User hasn't taken anything)
       if (tableData.length === 0) return true;
-
-      // Case 2: User has taken items, check if ALL are fully returned
-      // Every row must have returnQuantity equal to issued quantity
       return tableData.every(row => row.quantity === (row.returnQuantity || 0));
   }, [tableData, selectedPersonName]);
 
@@ -246,38 +217,28 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
             </button>
         </div>
 
-        {/* Clearance Message - SUCCESS */}
-        {selectedPersonName && isCompletelyCleared && (
-            <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-center gap-4 mb-6 shadow-sm animate-in fade-in slide-in-from-top-2">
+        {/* Clearance Status Messages */}
+        {selectedPersonName && (
+            <div className={`p-4 rounded-xl border flex items-center gap-4 mb-6 shadow-sm animate-in fade-in slide-in-from-top-2 ${
+                isCompletelyCleared ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+            }`}>
                 <div className="relative shrink-0">
-                    <div className="w-4 h-4 bg-green-500 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></div>
+                    <div className={`w-4 h-4 rounded-full shadow-lg animate-pulse ${
+                        isCompletelyCleared ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50'
+                    }`}></div>
                 </div>
                 <div>
-                    <h4 className="font-bold text-green-800 font-nepali text-lg">जिन्सी क्लियरेन्स (Jinshi Clearance)</h4>
-                    <p className="text-sm text-green-700 font-medium">
-                        यस कर्मचारी/व्यक्तिको जिम्मामा कुनै पनि बाँकी सामान देखिएन। तपाईंले जिन्सी क्लियरेन्स गर्न सक्नुहुन्छ।
+                    <h4 className={`font-bold font-nepali text-lg ${isCompletelyCleared ? 'text-green-800' : 'text-red-800'}`}>
+                        {isCompletelyCleared ? 'जिन्सी क्लियरेन्स (Jinshi Clearance)' : 'जिन्सी क्लियरेन्स गर्न सकिदैन (Clearance Pending)'}
+                    </h4>
+                    <p className={`text-sm font-medium ${isCompletelyCleared ? 'text-green-700' : 'text-red-700'}`}>
+                        {isCompletelyCleared 
+                            ? 'यस कर्मचारी/व्यक्तिको जिम्मामा कुनै पनि बाँकी सामान देखिएन।' 
+                            : 'जिम्मामा बाँकी सामान देखियो। तपाईंले जिन्सी क्लियरेन्स गर्न सक्नुहुन्न।'}
                     </p>
                 </div>
-                <div className="ml-auto text-green-600">
-                    <CheckCircle2 size={32} className="opacity-50" />
-                </div>
-            </div>
-        )}
-
-        {/* Clearance Message - WARNING (NOT CLEARED) */}
-        {selectedPersonName && !isCompletelyCleared && (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-center gap-4 mb-6 shadow-sm animate-in fade-in slide-in-from-top-2">
-                <div className="relative shrink-0">
-                    <div className="w-4 h-4 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse"></div>
-                </div>
-                <div>
-                    <h4 className="font-bold text-red-800 font-nepali text-lg">जिन्सी क्लियरेन्स गर्न सकिदैन (Clearance Not Allowed)</h4>
-                    <p className="text-sm text-red-700 font-medium">
-                        जिम्मामा बाँकी सामान देखियो। तपाईंले जिन्सी क्लियरेन्स गर्न सक्नुहुन्न। (Items remaining in custody)
-                    </p>
-                </div>
-                <div className="ml-auto text-red-600">
-                    <AlertCircle size={32} className="opacity-50" />
+                <div className="ml-auto">
+                    {isCompletelyCleared ? <CheckCircle2 size={32} className="text-green-600 opacity-50" /> : <AlertCircle size={32} className="text-red-600 opacity-50" />}
                 </div>
             </div>
         )}
@@ -286,7 +247,7 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
         <div className="bg-white p-4 md:p-8 rounded-xl shadow-lg w-full overflow-x-auto print:shadow-none print:p-0 print:max-w-none">
             {/* Header Section */}
             <div className="mb-4">
-                <div className="text-right text-xs font-bold mb-2">म.ले.प.फारम नं: ४१२ (साविक ४७)</div>
+                <div className="text-right text-xs font-bold mb-2">म.ले.प.फारम नं: ४१२</div>
                 
                 <div className="flex items-start justify-between">
                     <div className="w-24 pt-2 hidden md:block">
@@ -295,7 +256,6 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
                     <div className="flex-1 text-center space-y-1">
                         <h1 className="text-xl font-bold text-red-600">{generalSettings.orgNameNepali}</h1>
                         {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
-                        {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
                     </div>
                     <div className="w-24 hidden md:block"></div> 
                 </div>
@@ -310,11 +270,11 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
             <div className="mb-6 flex justify-between items-end border-b border-slate-200 pb-2">
                 <div className="flex items-center gap-2">
                     <span className="font-bold text-sm">जिम्मेवारी लिने व्यक्तिको नाम:</span>
-                    <span className="text-lg text-primary-700 font-bold px-2">{selectedPersonName || '................................'}</span>
+                    <span className="text-lg text-primary-700 font-bold px-2 border-b-2 border-primary-600">{selectedPersonName || '................................'}</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="font-bold text-sm">आर्थिक वर्ष:</span>
-                    <span>{currentFiscalYear}</span>
+                    <span className="font-bold">{currentFiscalYear}</span>
                 </div>
             </div>
 
@@ -339,7 +299,6 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
                         <th className="border border-slate-900 p-1">पहिचान नं</th>
                         <th className="border border-slate-900 p-1">मोडल</th>
                         <th className="border border-slate-900 p-1">प्राप्ति स्रोत</th>
-                        
                         <th className="border border-slate-900 p-1">परिमाण</th>
                         <th className="border border-slate-900 p-1">मिति</th>
                         <th className="border border-slate-900 p-1">बुझ्नेको नाम</th>
@@ -353,21 +312,19 @@ export const SahayakJinshiKhata: React.FC<SahayakJinshiKhataProps> = ({
                             <tr key={row.id}>
                                 <td className="border border-slate-900 p-1 font-nepali whitespace-nowrap">{row.date}</td>
                                 <td className="border border-slate-900 p-1">{row.magFormNo}</td>
-                                <td className="border border-slate-900 p-1">{row.sanketNo || '-'}</td>
-                                <td className="border border-slate-900 p-1 text-left px-1">{row.name}</td>
+                                <td className="border border-slate-900 p-1 font-mono">{row.sanketNo || '-'}</td>
+                                <td className="border border-slate-900 p-1 text-left px-1 font-bold">{row.name}</td>
                                 <td className="border border-slate-900 p-1 text-left px-1">{row.specification}</td>
-                                <td className="border border-slate-900 p-1">{row.idNo || '-'}</td>
+                                <td className="border border-slate-900 p-1 font-mono">{row.idNo || '-'}</td>
                                 <td className="border border-slate-900 p-1">{row.model || '-'}</td>
                                 <td className="border border-slate-900 p-1">{row.source}</td>
                                 <td className="border border-slate-900 p-1">{row.unit}</td>
                                 <td className="border border-slate-900 p-1 font-bold">{row.quantity}</td>
-                                <td className="border border-slate-900 p-1 text-right px-1">{row.totalCost.toFixed(2)}</td>
+                                <td className="border border-slate-900 p-1 text-right px-1 font-bold">{row.totalCost.toFixed(2)}</td>
                                 <td className="border border-slate-900 p-1 text-[10px]">{row.receiverDate}</td>
-                                
                                 <td className="border border-slate-900 p-1 font-bold">{row.returnQuantity || ''}</td>
                                 <td className="border border-slate-900 p-1 font-nepali">{row.returnDate || ''}</td>
                                 <td className="border border-slate-900 p-1 text-[10px]">{row.returnReceiver || ''}</td>
-                                
                                 <td className="border border-slate-900 p-1"></td>
                             </tr>
                         ))

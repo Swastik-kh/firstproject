@@ -4,7 +4,7 @@ import { LoginForm } from './components/LoginForm';
 import { Dashboard } from './components/Dashboard';
 import { APP_NAME, ORG_NAME } from './constants';
 import { Landmark, ShieldCheck } from 'lucide-react';
-import { User, OrganizationSettings, MagFormEntry, RabiesPatient, PurchaseOrderEntry, IssueReportEntry, FirmEntry, QuotationEntry, InventoryItem, Store, StockEntryRequest, DakhilaPratibedanEntry, ReturnEntry, MarmatEntry, DhuliyaunaEntry, LogBookEntry } from './types';
+import { User, OrganizationSettings, MagFormEntry, RabiesPatient, PurchaseOrderEntry, IssueReportEntry, FirmEntry, QuotationEntry, InventoryItem, Store, StockEntryRequest, DakhilaPratibedanEntry, ReturnEntry, MarmatEntry, DhuliyaunaEntry, LogBookEntry, DakhilaItem } from './types';
 import { db } from './firebase';
 import { ref, onValue, set, remove, update, get } from "firebase/database";
 
@@ -115,6 +115,106 @@ const App: React.FC = () => {
     setCurrentFiscalYear(fiscalYear);
   };
 
+  const handleApproveStockEntry = async (requestId: string, approverName: string) => {
+      const requestRef = ref(db, `stockRequests/${requestId}`);
+      const requestSnap = await get(requestRef);
+      
+      if (requestSnap.exists()) {
+          const request: StockEntryRequest = requestSnap.val();
+          
+          // 1. Mark request as Approved
+          await update(requestRef, { 
+              status: 'Approved', 
+              approvedBy: approverName 
+          });
+
+          const dakhilaItems: DakhilaItem[] = [];
+
+          // 2. Add/Update items in Main Inventory
+          for (const item of request.items) {
+              let finalItemId = item.id;
+              
+              // If it's a temporary ID, generate a permanent one
+              if (item.id.startsWith('TEMP-')) {
+                  finalItemId = `ITEM-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+              }
+
+              const invRef = ref(db, `inventory/${finalItemId}`);
+              const existingSnap = await get(invRef);
+              
+              const incomingQty = Number(item.currentQuantity) || 0;
+              const incomingRate = Number(item.rate) || 0;
+              const incomingTax = Number(item.tax) || 0;
+              const incomingExclVat = incomingQty * incomingRate;
+              const incomingVatAmount = incomingExclVat * (incomingTax / 100);
+              const incomingValue = incomingExclVat + incomingVatAmount;
+
+              // Build Formal Dakhila Item for Report
+              dakhilaItems.push({
+                  id: Date.now() + Math.random(),
+                  name: item.itemName,
+                  codeNo: item.sanketNo || item.uniqueCode || '',
+                  specification: item.specification || '',
+                  source: request.receiptSource,
+                  unit: item.unit,
+                  quantity: incomingQty,
+                  rate: incomingRate,
+                  totalAmount: incomingExclVat,
+                  vatAmount: incomingVatAmount,
+                  grandTotal: incomingValue,
+                  otherExpenses: 0,
+                  finalTotal: incomingValue,
+                  remarks: item.remarks || ''
+              });
+
+              if (existingSnap.exists()) {
+                  const existingItem: InventoryItem = existingSnap.val();
+                  const newTotalQty = (Number(existingItem.currentQuantity) || 0) + incomingQty;
+                  const newTotalValue = (Number(existingItem.totalAmount) || 0) + incomingValue;
+
+                  await update(invRef, {
+                      ...item, 
+                      id: finalItemId,
+                      currentQuantity: newTotalQty,
+                      totalAmount: isNaN(newTotalValue) ? 0 : newTotalValue,
+                      lastUpdateDateBs: request.requestDateBs,
+                      lastUpdateDateAd: request.requestDateAd,
+                      receiptSource: request.receiptSource,
+                      fiscalYear: request.fiscalYear,
+                      storeId: request.storeId
+                  });
+              } else {
+                  await set(invRef, {
+                      ...item,
+                      id: finalItemId,
+                      totalAmount: isNaN(incomingValue) ? 0 : incomingValue,
+                      lastUpdateDateBs: request.requestDateBs,
+                      lastUpdateDateAd: request.requestDateAd,
+                      receiptSource: request.receiptSource,
+                      fiscalYear: request.fiscalYear,
+                      storeId: request.storeId
+                  });
+              }
+          }
+
+          // 3. ARCHIVE AS FORMAL DAKHILA REPORT (Form 403)
+          const formalDakhilaId = `DA-${Date.now()}`;
+          const formalReport: DakhilaPratibedanEntry = {
+              id: formalDakhilaId,
+              fiscalYear: request.fiscalYear,
+              dakhilaNo: request.items[0]?.dakhilaNo || formalDakhilaId,
+              date: request.requestDateBs,
+              orderNo: request.refNo || 'BULK-ENTRY',
+              items: dakhilaItems,
+              status: 'Final',
+              preparedBy: { name: request.requesterName || request.requestedBy, designation: request.requesterDesignation || 'Staff' },
+              approvedBy: { name: approverName, designation: 'Approver' }
+          };
+          
+          await set(ref(db, `dakhilaReports/${formalDakhilaId}`), formalReport);
+      }
+  };
+
   return (
     <>
       {currentUser ? (
@@ -138,7 +238,7 @@ const App: React.FC = () => {
           rabiesPatients={rabiesPatients}
           onAddRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
           onUpdateRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
-          onDeleteRabiesPatient={(id) => {
+          onDeletePatient={(id) => {
             const patientRef = ref(db, `rabiesPatients/${id}`);
             remove(patientRef).catch(err => console.error("Error deleting patient:", err));
           }}
@@ -151,7 +251,7 @@ const App: React.FC = () => {
           onUpdateInventoryItem={(i) => set(ref(db, `inventory/${i.id}`), i)}
           stockEntryRequests={stockEntryRequests}
           onRequestStockEntry={(r) => set(ref(db, `stockRequests/${r.id}`), r)}
-          onApproveStockEntry={(id, app) => update(ref(db, `stockRequests/${id}`), { status: 'Approved', approvedBy: app })}
+          onApproveStockEntry={handleApproveStockEntry}
           onRejectStockEntry={(id, res, app) => update(ref(db, `stockRequests/${id}`), { status: 'Rejected', rejectionReason: res, approvedBy: app })}
           stores={stores}
           onAddStore={(s) => set(ref(db, `stores/${s.id}`), s)}
