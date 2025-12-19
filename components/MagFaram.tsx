@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
 import { SearchableSelect } from './SearchableSelect';
 import { NepaliDatePicker } from './NepaliDatePicker';
@@ -79,13 +80,25 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const handleRemoveItem = (id: number) => items.length > 1 && setItems(items.filter(i => i.id !== id));
   const updateItem = (id: number, field: keyof MagItem, value: string) => setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
 
+  const updateStoreKeeperStatus = (status: string) => {
+      if (isViewOnly || !isStoreKeeper) return;
+      setFormDetails(prev => ({
+          ...prev,
+          storeKeeper: {
+              ...prev.storeKeeper,
+              status: prev.storeKeeper?.status === status ? '' : status,
+              name: prev.storeKeeper?.name || currentUser.fullName
+          }
+      }));
+  };
+
   const handleLoadForm = (form: MagFormEntry, viewOnly: boolean = false) => {
       setEditingId(form.id);
       setIsViewOnly(viewOnly);
       setItems(form.items);
       setFormDetails({
           ...form,
-          storeKeeper: isStoreKeeper && form.status === 'Pending' ? { status: 'stock', name: currentUser.fullName } : form.storeKeeper || { status: '', name: '' },
+          storeKeeper: isStoreKeeper && form.status === 'Pending' ? { status: form.storeKeeper?.status || 'stock', name: currentUser.fullName } : form.storeKeeper || { status: '', name: '' },
           approvedBy: isAdminOrApproval && form.status === 'Verified' ? { name: currentUser.fullName, designation: currentUser.designation, date: '' } : form.approvedBy || { name: '', designation: '', date: '' }
       });
   };
@@ -253,7 +266,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     <Save size={18} /> {editingId && editingId !== 'new' ? (isStoreKeeper ? 'प्रमाणित गर्नुहोस्' : 'स्वीकृत गर्नुहोस्') : 'सुरक्षित गर्नुहोस्'}
                 </button>
             )}
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors font-medium">
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
                 <Printer size={18} /> प्रिन्ट (Print)
             </button>
           </div>
@@ -342,28 +355,75 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-8 mt-16 text-sm">
-              <div>
+          <div className="grid grid-cols-3 gap-8 mt-16 text-[10px]">
+              {/* Column 1: Demand By */}
+              <div className="flex flex-col">
                   <div className="font-bold mb-10">माग गर्नेको दस्तखत:</div>
-                  <div className="border-t border-slate-400 pt-1">
+                  <div className="border-t border-slate-400 pt-1 mt-auto">
                     <div>नाम: {formDetails.demandBy?.name}</div>
                     <div>पद: {formDetails.demandBy?.designation}</div>
                   </div>
               </div>
-              <div>
-                  <div className="font-bold mb-10">सिफारिस गर्ने/प्रमाणित:</div>
-                  <div className="border-t border-slate-400 pt-1">
+
+              {/* Column 2: Storekeeper Section ( राय / सिफारिस ) */}
+              <div className="flex flex-col">
+                  <div className="font-bold mb-2">जिन्सी शाखाको राय:</div>
+                  
+                  {/* Interactive part for Storekeeper Verification */}
+                  <div className="flex flex-col gap-1.5 mb-4 p-2 bg-slate-50/50 border border-dotted border-slate-300 rounded no-print">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                            <input 
+                                type="checkbox" 
+                                checked={formDetails.storeKeeper?.status === 'stock'} 
+                                onChange={() => updateStoreKeeperStatus('stock')}
+                                disabled={isViewOnly || !isStoreKeeper || formDetails.status !== 'Pending'}
+                                className="w-3.5 h-3.5 text-primary-600 rounded border-slate-300 focus:ring-primary-500"
+                            />
+                            <span className="text-[10px] font-medium text-slate-700 group-hover:text-primary-700">मौज्दातमा रहेको</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                            <input 
+                                type="checkbox" 
+                                checked={formDetails.storeKeeper?.status === 'market'} 
+                                onChange={() => updateStoreKeeperStatus('market')}
+                                disabled={isViewOnly || !isStoreKeeper || formDetails.status !== 'Pending'}
+                                className="w-3.5 h-3.5 text-primary-600 rounded border-slate-300 focus:ring-primary-500"
+                            />
+                            <span className="text-[10px] font-medium text-slate-700 group-hover:text-primary-700">बजारबाट खरिद गर्नुपर्ने</span>
+                        </label>
+                  </div>
+
+                  {/* Print-only static checkboxes */}
+                  <div className="hidden print:flex flex-col gap-1 mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-3.5 h-3.5 border border-slate-800 flex items-center justify-center rounded-sm ${formDetails.storeKeeper?.status === 'stock' ? 'bg-slate-800' : 'bg-white'}`}>
+                                {formDetails.storeKeeper?.status === 'stock' && <Check size={10} className="text-white" />}
+                            </div>
+                            <span className="text-[10px]">मौज्दातमा रहेको</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className={`w-3.5 h-3.5 border border-slate-800 flex items-center justify-center rounded-sm ${formDetails.storeKeeper?.status === 'market' ? 'bg-slate-800' : 'bg-white'}`}>
+                                {formDetails.storeKeeper?.status === 'market' && <Check size={10} className="text-white" />}
+                            </div>
+                            <span className="text-[10px]">बजारबाट खरिद गर्नुपर्ने</span>
+                        </div>
+                  </div>
+
+                  <div className="border-t border-slate-400 pt-1 mt-auto">
+                    <div className="font-bold mb-6">सिफारिस गर्ने (जिन्सी शाखा):</div>
                     {(formDetails.status === 'Verified' || formDetails.status === 'Approved') ? (
                         <div>
                             <div>नाम: {formDetails.storeKeeper?.name}</div>
-                            <div className="text-xs italic text-slate-500">(जिन्सी शाखा प्रमुख)</div>
+                            <div className="text-[9px] italic text-slate-500">(जिन्सी शाखा प्रमुख)</div>
                         </div>
                     ) : <div className="text-slate-300 italic">....................</div>}
                   </div>
               </div>
-              <div>
+
+              {/* Column 3: Approved By */}
+              <div className="flex flex-col">
                   <div className="font-bold mb-10">स्वीकृत गर्नेको दस्तखत:</div>
-                  <div className="border-t border-slate-400 pt-1">
+                  <div className="border-t border-slate-400 pt-1 mt-auto">
                     {formDetails.status === 'Approved' ? (
                         <div>
                             <div>नाम: {formDetails.approvedBy?.name}</div>
