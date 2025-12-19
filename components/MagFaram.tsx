@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft, Check } from 'lucide-react';
-import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
+import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Eye, Search, X, AlertCircle, ChevronRight, ArrowLeft, Check, Square } from 'lucide-react';
+import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings } from '../types';
 import { SearchableSelect } from './SearchableSelect';
 import { NepaliDatePicker } from './NepaliDatePicker';
 // @ts-ignore
@@ -17,17 +16,15 @@ interface MagFaramProps {
   generalSettings: OrganizationSettings;
 }
 
-export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, stores = [], generalSettings }) => {
+export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, generalSettings }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
   
-  // Helper to generate formatted Mag Form No (e.g., 001-MF)
   const generateMagFormNo = (forms: MagFormEntry[], fy: string) => {
     const fyForms = forms.filter(f => f.fiscalYear === fy);
-    if (fyForms.length === 0) return "001-MF";
+    if (fyForms.length === 0) return "001";
     
     const maxNo = fyForms.reduce((max, f) => {
-        // Handle both old numeric and new string formats
         let val = 0;
         if (typeof f.formNo === 'string') {
             const parts = f.formNo.split('-');
@@ -38,12 +35,12 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         return isNaN(val) ? max : Math.max(max, val);
     }, 0);
     
-    return `${String(maxNo + 1).padStart(3, '0')}-MF`;
+    return String(maxNo + 1).padStart(2, '0');
   };
 
-  // Calculate Today in Nepali for Restrictions
   const todayBS = useMemo(() => {
     try {
+      /* Changed format from YYYY.MM.DD to YYYY-MM-DD to match NepaliDatePicker's allowed types */
       return new NepaliDate().format('YYYY-MM-DD');
     } catch (e) {
       return '';
@@ -56,18 +53,17 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     id: '',
     items: [],
     fiscalYear: currentFiscalYear,
-    formNo: '', // Will be set on reset or effect
-    date: todayBS, // Default to today
+    formNo: '',
+    date: todayBS,
     status: 'Pending',
-    demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
+    demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
     recommendedBy: { name: '', designation: '', date: '' },
-    storeKeeper: { status: '', name: '', },
-    receiver: { name: '', designation: '', date: '' },
+    storeKeeper: { status: 'stock', name: '' },
+    receiver: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS },
     ledgerEntry: { name: '', date: '' },
-    approvedBy: { name: '', designation: '', date: '' }
+    approvedBy: { name: '', designation: '', date: todayBS }
   });
 
-  // Set initial form number for a new form
   useEffect(() => {
     if (!editingId && !formDetails.id) {
         setFormDetails(prev => ({
@@ -77,21 +73,15 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     }
   }, [editingId, existingForms, currentFiscalYear]);
 
-  const isStoreKeeper = currentUser.role === 'STOREKEEPER';
+  const isStoreKeeper = currentUser.role === 'STOREKEEPER' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
   const isAdminOrApproval = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
 
-  // All actionable forms for admins/storekeepers
   const actionableForms = useMemo(() => {
-      if (isStoreKeeper) {
-          return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
-      }
-      if (isAdminOrApproval) {
-          return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
-      }
+      if (isStoreKeeper) return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
+      if (isAdminOrApproval) return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
       return [];
   }, [existingForms, isStoreKeeper, isAdminOrApproval]);
 
-  // History accessible to all users
   const historyForms = useMemo(() => {
       if (isAdminOrApproval || isStoreKeeper) {
           return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.id.localeCompare(a.id));
@@ -102,7 +92,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const itemOptions = useMemo(() => inventoryItems.map(item => ({
     id: item.id,
     value: item.itemName,
-    label: `${item.itemName} (${item.unit}) - Qty: ${item.currentQuantity}`,
+    label: `${item.itemName} (${item.unit})`,
     itemData: item
   })), [inventoryItems]);
 
@@ -111,14 +101,10 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const updateItem = (id: number, field: keyof MagItem, value: string) => setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
 
   const updateStoreKeeperStatus = (status: string) => {
-      if (isViewOnly || !isStoreKeeper) return;
+      if (isViewOnly) return;
       setFormDetails(prev => ({
           ...prev,
-          storeKeeper: {
-              ...prev.storeKeeper,
-              status: prev.storeKeeper?.status === status ? '' : status,
-              name: prev.storeKeeper?.name || currentUser.fullName
-          }
+          storeKeeper: { ...prev.storeKeeper, status, name: prev.storeKeeper?.name || '' }
       }));
   };
 
@@ -126,27 +112,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       setEditingId(form.id);
       setIsViewOnly(viewOnly);
       setItems(form.items);
-      setFormDetails({
-          ...form,
-          storeKeeper: isStoreKeeper && form.status === 'Pending' ? { status: form.storeKeeper?.status || 'stock', name: currentUser.fullName } : form.storeKeeper || { status: '', name: '' },
-          approvedBy: isAdminOrApproval && form.status === 'Verified' ? { name: currentUser.fullName, designation: currentUser.designation, date: '' } : form.approvedBy || { name: '', designation: '', date: '' }
-      });
+      setFormDetails({ ...form });
   };
 
   const handleSave = () => {
-    if (!formDetails.date) { alert("कृपया मिति छान्नुहोस् (Please select date)"); return; }
-    
     let nextStatus = formDetails.status || 'Pending';
-    let successMsg = "माग फारम सुरक्षित भयो (Saved Successfully)";
-
     if (editingId && editingId !== 'new') {
-        if (isStoreKeeper && formDetails.status === 'Pending') {
-            nextStatus = 'Verified';
-            successMsg = "फारम प्रमाणित गरी स्वीकृतिको लागि पठाइयो (Verified and forwarded for approval)";
-        } else if (isAdminOrApproval && formDetails.status === 'Verified') {
-            nextStatus = 'Approved';
-            successMsg = "माग फारम स्वीकृत गरियो (Mag Faram Approved)";
-        }
+        if (isStoreKeeper && formDetails.status === 'Pending') nextStatus = 'Verified';
+        else if (isAdminOrApproval && formDetails.status === 'Verified') nextStatus = 'Approved';
     }
 
     const newForm: MagFormEntry = {
@@ -156,7 +129,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         status: nextStatus
     };
     onSave(newForm);
-    alert(successMsg);
+    alert("माग फारम सुरक्षित भयो।");
     handleReset();
   };
 
@@ -165,18 +138,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setIsViewOnly(false);
     setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
     setFormDetails({
-        id: '',
-        items: [],
-        fiscalYear: currentFiscalYear,
-        formNo: generateMagFormNo(existingForms, currentFiscalYear),
-        date: todayBS,
-        status: 'Pending',
-        demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
+        id: '', items: [], fiscalYear: currentFiscalYear, formNo: generateMagFormNo(existingForms, currentFiscalYear),
+        date: todayBS, status: 'Pending',
+        demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
         recommendedBy: { name: '', designation: '', date: '' },
-        storeKeeper: { status: '', name: '' },
-        receiver: { name: '', designation: '', date: '' },
+        storeKeeper: { status: 'stock', name: '' },
+        receiver: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS },
         ledgerEntry: { name: '', date: '' },
-        approvedBy: { name: '', designation: '', date: '' }
+        approvedBy: { name: '', designation: '', date: todayBS }
     });
   };
 
@@ -185,92 +154,43 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-center border-b border-slate-200 pb-4">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-800 font-nepali">माग फारम व्यवस्थापन (Mag Faram Management)</h2>
-                    <p className="text-sm text-slate-500">नयाँ माग फारम भर्नुहोस् वा पुराना विवरणहरू हेर्नुहोस्</p>
+                    <h2 className="text-xl font-bold text-slate-800 font-nepali">माग फारम व्यवस्थापन (Mag Faram)</h2>
+                    <p className="text-sm text-slate-500 font-nepali">म.ले.प. फारम नं ४०१ अनुसारको माग फारम</p>
                 </div>
-                <button onClick={() => setEditingId('new')} className="bg-primary-600 text-white px-6 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all active:scale-95 font-bold font-nepali">
-                    <Plus size={20} /> नयाँ माग फारम (Create New)
+                <button onClick={() => setEditingId('new')} className="bg-primary-600 text-white px-6 py-2.5 rounded-xl flex items-center gap-2 shadow-lg hover:bg-primary-700 transition-all font-bold font-nepali">
+                    <Plus size={20} /> नयाँ माग फारम थप्नुहोस्
                 </button>
             </div>
 
-            {/* ACTIONABLE LIST */}
-            {(isStoreKeeper || isAdminOrApproval) && actionableForms.length > 0 && (
+            {actionableForms.length > 0 && (
                 <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
                     <div className="bg-orange-50 px-6 py-3 border-b border-orange-100 flex justify-between items-center text-orange-800">
-                        <h3 className="font-bold font-nepali flex items-center gap-2">
-                            <Clock size={18} /> {isStoreKeeper ? 'प्रमाणिकरणको लागि बाँकी' : 'स्वीकृतिको लागि बाँकी'}
-                        </h3>
-                        <span className="bg-orange-200 text-xs font-bold px-2 py-0.5 rounded-full">{actionableForms.length} Requests</span>
+                        <h3 className="font-bold font-nepali flex items-center gap-2"><Clock size={18} /> कारबाहीको लागि बाँकी</h3>
+                        <span className="bg-orange-200 text-xs font-bold px-2 py-0.5 rounded-full">{actionableForms.length}</span>
                     </div>
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-slate-600 font-medium">
-                            <tr>
-                                <th className="px-6 py-3">Form No</th>
-                                <th className="px-6 py-3">Requested By</th>
-                                <th className="px-6 py-3">Date</th>
-                                <th className="px-6 py-3">Items</th>
-                                <th className="px-6 py-3 text-right">Action</th>
-                            </tr>
+                            <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Requested By</th><th className="px-6 py-3">Date</th><th className="px-6 py-3 text-right">Action</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {actionableForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-3 font-mono font-bold text-orange-600">#{f.formNo}</td>
-                                    <td className="px-6 py-3 font-medium">{f.demandBy?.name}</td>
-                                    <td className="px-6 py-3 font-nepali">{f.date}</td>
-                                    <td className="px-6 py-3 text-slate-500">{f.items.length} items</td>
-                                    <td className="px-6 py-3 text-right">
-                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline flex items-center gap-1 ml-auto bg-primary-50 px-3 py-1 rounded-lg">
-                                            {isStoreKeeper ? 'Verify' : 'Approve'} <ChevronRight size={14} />
-                                        </button>
-                                    </td>
-                                </tr>
+                                <tr key={f.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-mono font-bold">#{f.formNo}</td><td className="px-6 py-3 font-medium">{f.demandBy?.name}</td><td className="px-6 py-3 font-nepali">{f.date}</td><td className="px-6 py-3 text-right"><button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline bg-primary-50 px-3 py-1.5 rounded-lg">Verify/Approve</button></td></tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
 
-            {/* HISTORY LIST */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2">
-                    <FileText size={18} /> फारम इतिहास (Form History)
-                </div>
+                <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2"><FileText size={18} /> इतिहास (History)</div>
                 <table className="w-full text-sm text-left">
                     <thead className="bg-slate-50 text-slate-500 font-medium">
-                        <tr>
-                            <th className="px-6 py-3">Form No</th>
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3 text-right">Action</th>
-                        </tr>
+                        <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Date</th><th className="px-6 py-3">Status</th><th className="px-6 py-3 text-right">Action</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {historyForms.length === 0 ? (
-                            <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic font-nepali">कुनै डाटा फेला परेन</td></tr>
-                        ) : (
-                            historyForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-3 font-mono font-bold text-slate-700">#{f.formNo}</td>
-                                    <td className="px-6 py-3 font-nepali">{f.date}</td>
-                                    <td className="px-6 py-3">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-                                            f.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' :
-                                            f.status === 'Pending' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                            f.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                                            'bg-blue-50 text-blue-700 border-blue-200'
-                                        }`}>
-                                            {f.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-3 text-right">
-                                        <button onClick={() => handleLoadForm(f, true)} className="text-slate-400 hover:text-primary-600 p-2 hover:bg-primary-50 rounded-full transition-all" title="View Format">
-                                            <Eye size={18} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
+                        {historyForms.map(f => (
+                            <tr key={f.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-mono font-bold">#{f.formNo}</td><td className="px-6 py-3 font-nepali">{f.date}</td><td className="px-6 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${f.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{f.status}</span></td><td className="px-6 py-3 text-right"><button onClick={() => handleLoadForm(f, true)} className="text-slate-400 hover:text-primary-600 p-2"><Eye size={18} /></button></td></tr>
+                        ))}
                     </tbody>
                 </table>
             </div>
@@ -283,207 +203,200 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
        <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm no-print">
           <div className="flex items-center gap-3">
               <button onClick={handleReset} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
-              <h2 className="font-bold text-slate-700 font-nepali text-lg">माग फारम (Mag Faram Format)</h2>
+              <h2 className="font-bold text-slate-700 font-nepali text-lg">माग फारम भर्नुहोस्</h2>
           </div>
           <div className="flex gap-2">
             {!isViewOnly && (
-                <button onClick={handleAddItem} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors">
-                    <Plus size={18} /> थप्नुहोस् (Add)
+                <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">
+                    <Save size={18} /> {editingId && editingId !== 'new' ? 'प्रमाणित/स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
                 </button>
             )}
-            {!isViewOnly && (
-                <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-all">
-                    <Save size={18} /> {editingId && editingId !== 'new' ? (isStoreKeeper ? 'प्रमाणित गर्नुहोस्' : 'स्वीकृत गर्नुहोस्') : 'सुरक्षित गर्नुहोस्'}
-                </button>
-            )}
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
-                <Printer size={18} /> प्रिन्ट (Print)
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm">
+                <Printer size={18} /> प्रिन्ट गर्नुहोस्
             </button>
           </div>
        </div>
 
-       <div id="mag-form-print" className="bg-white p-8 md:p-12 rounded-xl shadow-lg max-w-[210mm] mx-auto min-h-[297mm] font-nepali text-sm print:shadow-none print:p-0">
+       <div id="mag-form-print" className="bg-white p-6 md:p-10 max-w-[210mm] mx-auto min-h-[297mm] font-nepali text-slate-900 print:p-0 print:shadow-none print:w-full border shadow-lg rounded-xl">
           <div className="text-right font-bold text-[10px] mb-2">म.ले.प.फारम नं: ४०१</div>
           
-          <div className="mb-8">
+          <div className="mb-6">
               <div className="flex items-start justify-between">
-                  <div className="w-24 flex justify-start pt-2">
-                      <img 
-                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" 
-                        alt="Nepal Emblem" 
-                        className="h-24 w-24 object-contain"
-                      />
+                  <div className="w-20 pt-1">
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" alt="Nepal Emblem" className="h-20 w-20 object-contain" />
                   </div>
-                  <div className="flex-1 text-center space-y-1">
-                      <h1 className="text-xl font-bold text-red-600">{generalSettings.orgNameNepali}</h1>
-                      {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
-                      {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
-                      {generalSettings.subTitleNepali3 && <h3 className="text-lg font-bold">{generalSettings.subTitleNepali3}</h3>}
+                  <div className="flex-1 text-center">
+                      <h1 className="text-lg font-bold">चौदण्डीगढी नगरपालिका</h1>
+                      <h2 className="text-base font-bold">नगरकार्यपालिकाको कार्यालय</h2>
+                      <h3 className="text-sm font-bold">स्वास्थ्य शाखा</h3>
+                      <h3 className="text-base font-bold">आधारभूत नगर अस्पताल बेल्टार</h3>
                   </div>
-                  <div className="w-24"></div> 
+                  <div className="w-20"></div> 
               </div>
-              <div className="text-center pt-6 pb-2">
+              <div className="text-center mt-6">
                   <h2 className="text-lg font-bold underline underline-offset-4">माग फारम</h2>
               </div>
           </div>
 
-          <div className="flex justify-between items-start mb-6">
-              <div className="font-bold">आर्थिक वर्ष: <span className="border-b border-dotted border-slate-800 px-2">{currentFiscalYear}</span></div>
-              <div className="flex flex-col items-end gap-2">
-                  <div className="flex items-center gap-2">
-                      <span className="font-bold">माग फारम नं:</span>
-                      <input 
-                        value={formDetails.formNo} 
-                        readOnly 
-                        className="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold text-red-600"
-                      />
+          <div className="flex justify-end text-sm mb-4">
+              <div className="space-y-1 w-44">
+                  <div className="flex justify-between items-center">
+                      <span className="font-bold">आर्थिक वर्ष :</span>
+                      <span className="font-bold border-b border-dotted border-slate-800 px-1">{currentFiscalYear}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                      <span className="font-bold">मिति:</span>
-                      <NepaliDatePicker
-                        value={formDetails.date}
-                        onChange={(val) => setFormDetails({ ...formDetails, date: val })}
-                        format="YYYY/MM/DD"
-                        label=""
-                        hideIcon={true}
-                        inputClassName="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold placeholder:text-slate-400 placeholder:font-normal rounded-none px-0 py-0 h-auto focus:ring-0 focus:border-slate-800"
-                        wrapperClassName="w-32"
-                        disabled={isViewOnly || (editingId && editingId !== 'new' && !isAdminOrApproval && !isStoreKeeper)}
-                        minDate={todayBS}
-                        maxDate={todayBS}
-                      />
+                  <div className="flex justify-between items-center">
+                      <span className="font-bold">माग फारम नं :</span>
+                      <span className="font-bold border-b border-dotted border-slate-800 px-1 text-red-600">{formDetails.formNo}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                      <span className="font-bold">मिति :</span>
+                      <div className="flex-1">
+                        <NepaliDatePicker 
+                            value={formDetails.date} 
+                            onChange={val => setFormDetails({...formDetails, date: val})}
+                            /* Changed format from YYYY.MM.DD to YYYY-MM-DD to fix type error */
+                            format="YYYY-MM-DD"
+                            label=""
+                            hideIcon={true}
+                            inputClassName="!border-none !bg-transparent !p-0 !text-right !font-bold !h-auto !shadow-none !ring-0 border-b border-dotted border-slate-800 rounded-none w-full"
+                            disabled={isViewOnly}
+                            popupAlign="right"
+                        />
+                      </div>
                   </div>
               </div>
           </div>
 
-          <table className="w-full border-collapse border border-slate-900 text-center">
-              <thead>
-                  <tr className="bg-slate-50 font-bold">
-                      <th className="border border-slate-900 p-2 w-12">क्र.सं.</th>
-                      <th className="border border-slate-900 p-2">सामानको नाम</th>
-                      <th className="border border-slate-900 p-2 w-20">एकाई</th>
-                      <th className="border border-slate-900 p-2 w-24">परिमाण</th>
-                      <th className="border border-slate-900 p-2">कैफियत</th>
+          <table className="w-full border-collapse border border-slate-800 text-center text-xs">
+              <thead className="bg-slate-50 font-bold">
+                  <tr>
+                      <th className="border border-slate-800 p-2 w-10">क्र.सं.</th>
+                      <th className="border border-slate-800 p-2">सामानको नाम</th>
+                      <th className="border border-slate-800 p-2 w-32">स्पेसिफिकेशन</th>
+                      <th className="border border-slate-800 p-1 w-32" colSpan={2}>माग गरिएको</th>
+                      <th className="border border-slate-800 p-2 w-24">कैफियत</th>
+                  </tr>
+                  <tr>
+                      <th className="border border-slate-800 p-1"></th>
+                      <th className="border border-slate-800 p-1"></th>
+                      <th className="border border-slate-800 p-1"></th>
+                      <th className="border border-slate-800 p-1">एकाई</th>
+                      <th className="border border-slate-800 p-1">परिमाण</th>
+                      <th className="border border-slate-800 p-1"></th>
+                  </tr>
+                  <tr className="bg-slate-100 text-[10px]">
+                      <th className="border border-slate-800 p-0.5">१</th>
+                      <th className="border border-slate-800 p-0.5">२</th>
+                      <th className="border border-slate-800 p-0.5">३</th>
+                      <th className="border border-slate-800 p-0.5">४</th>
+                      <th className="border border-slate-800 p-0.5">५</th>
+                      <th className="border border-slate-800 p-0.5">६</th>
                   </tr>
               </thead>
               <tbody>
                   {items.map((item, idx) => (
-                      <tr key={item.id}>
-                          <td className="border border-slate-900 p-2">{idx + 1}</td>
-                          <td className="border border-slate-900 p-0 text-left">
-                              {!isViewOnly && (!editingId || editingId === 'new') ? (
+                      <tr key={item.id} className="min-h-[30px]">
+                          <td className="border border-slate-800 p-1">{idx + 1}</td>
+                          <td className="border border-slate-800 p-0 text-left">
+                              {!isViewOnly ? (
                                 <SearchableSelect 
-                                    options={itemOptions} 
-                                    value={item.name} 
+                                    options={itemOptions} value={item.name} 
                                     onChange={val => updateItem(item.id, 'name', val)} 
                                     onSelect={opt => updateItem(item.id, 'unit', opt.itemData.unit)} 
-                                    className="!border-none !bg-transparent !p-2"
-                                    placeholder="सामान खोज्नुहोस्..."
+                                    className="!border-none !bg-transparent !p-1 !text-xs" placeholder="सामान छान्नुहोस्..."
                                 />
-                              ) : (
-                                <span className="px-2 block py-2">{item.name}</span>
-                              )}
+                              ) : <span className="px-2">{item.name}</span>}
                           </td>
-                          <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full text-center bg-transparent outline-none py-1" />
+                          <td className="border border-slate-800 p-1">
+                              <input disabled={isViewOnly} value={item.specification} onChange={e => updateItem(item.id, 'specification', e.target.value)} className="w-full text-left outline-none bg-transparent px-1" />
                           </td>
-                          <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center font-bold bg-transparent outline-none py-1" placeholder="०" />
+                          <td className="border border-slate-800 p-1">
+                              <input disabled={isViewOnly} value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full text-center outline-none bg-transparent" />
                           </td>
-                          <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left px-2 bg-transparent outline-none py-1" />
+                          <td className="border border-slate-800 p-1 font-bold">
+                              <input disabled={isViewOnly} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center outline-none bg-transparent" />
                           </td>
+                          <td className="border border-slate-800 p-1">
+                              <input disabled={isViewOnly} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left outline-none bg-transparent px-1" />
+                          </td>
+                      </tr>
+                  ))}
+                  {[...Array(Math.max(0, 4 - items.length))].map((_, i) => (
+                      <tr key={`empty-${i}`} className="h-8">
+                          <td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td>
                       </tr>
                   ))}
               </tbody>
           </table>
 
           {!isViewOnly && (
-            <div className="mt-4 no-print">
-                <button 
-                    onClick={handleAddItem}
-                    className="flex items-center gap-2 text-primary-600 hover:text-primary-700 text-xs font-bold px-3 py-2 bg-primary-50 rounded-lg border border-dashed border-primary-200 transition-all hover:bg-primary-100"
-                >
-                    <Plus size={14} /> लहर थप्नुहोस् (Add Row)
-                </button>
-            </div>
+            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200">
+                <Plus size={12} /> थप्नुहोस्
+            </button>
           )}
 
-          <div className="grid grid-cols-3 gap-8 mt-16 text-[10px]">
-              {/* Column 1: Demand By */}
-              <div className="flex flex-col">
-                  <div className="font-bold mb-10">माग गर्नेको दस्तखत:</div>
-                  <div className="border-t border-slate-400 pt-1 mt-auto">
-                    <div>नाम: {formDetails.demandBy?.name}</div>
-                    <div>पद: {formDetails.demandBy?.designation}</div>
+          <div className="mt-8 text-[11px] grid grid-cols-12 gap-y-10">
+              <div className="col-span-4 pr-4">
+                  <div className="font-bold mb-4">माग गर्नेको:</div>
+                  <div className="space-y-1">
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
                   </div>
               </div>
 
-              {/* Column 2: Storekeeper Section ( राय / सिफारिस ) */}
-              <div className="flex flex-col">
-                  <div className="font-bold mb-2">जिन्सी शाखाको राय:</div>
-                  
-                  {/* Interactive part for Storekeeper Verification */}
-                  <div className="flex flex-col gap-1.5 mb-4 p-2 bg-slate-50/50 border border-dotted border-slate-300 rounded no-print">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                            <input 
-                                type="checkbox" 
-                                checked={formDetails.storeKeeper?.status === 'stock'} 
-                                onChange={() => updateStoreKeeperStatus('stock')}
-                                disabled={isViewOnly || !isStoreKeeper || formDetails.status !== 'Pending'}
-                                className="w-3.5 h-3.5 text-primary-600 rounded border-slate-300 focus:ring-primary-500"
-                            />
-                            <span className="text-[10px] font-medium text-slate-700 group-hover:text-primary-700">मौज्दातमा रहेको</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                            <input 
-                                type="checkbox" 
-                                checked={formDetails.storeKeeper?.status === 'market'} 
-                                onChange={() => updateStoreKeeperStatus('market')}
-                                disabled={isViewOnly || !isStoreKeeper || formDetails.status !== 'Pending'}
-                                className="w-3.5 h-3.5 text-primary-600 rounded border-slate-300 focus:ring-primary-500"
-                            />
-                            <span className="text-[10px] font-medium text-slate-700 group-hover:text-primary-700">बजारबाट खरिद गर्नुपर्ने</span>
-                        </label>
-                  </div>
-
-                  {/* Print-only static checkboxes */}
-                  <div className="hidden print:flex flex-col gap-1 mb-4">
-                        <div className="flex items-center gap-2">
-                            <div className={`w-3.5 h-3.5 border border-slate-800 flex items-center justify-center rounded-sm ${formDetails.storeKeeper?.status === 'stock' ? 'bg-slate-800' : 'bg-white'}`}>
-                                {formDetails.storeKeeper?.status === 'stock' && <Check size={10} className="text-white" />}
-                            </div>
-                            <span className="text-[10px]">मौज्दातमा रहेको</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`w-3.5 h-3.5 border border-slate-800 flex items-center justify-center rounded-sm ${formDetails.storeKeeper?.status === 'market' ? 'bg-slate-800' : 'bg-white'}`}>
-                                {formDetails.storeKeeper?.status === 'market' && <Check size={10} className="text-white" />}
-                            </div>
-                            <span className="text-[10px]">बजारबाट खरिद गर्नुपर्ने</span>
-                        </div>
-                  </div>
-
-                  <div className="border-t border-slate-400 pt-1 mt-auto">
-                    <div className="font-bold mb-6">सिफारिस गर्ने (जिन्सी शाखा):</div>
-                    {(formDetails.status === 'Verified' || formDetails.status === 'Approved') ? (
-                        <div>
-                            <div>नाम: {formDetails.storeKeeper?.name}</div>
-                            <div className="text-[9px] italic text-slate-500">(जिन्सी शाखा प्रमुख)</div>
-                        </div>
-                    ) : <div className="text-slate-300 italic">....................</div>}
+              <div className="col-span-4 px-4">
+                  <div className="font-bold mb-4">सिफारिस गर्ने:.......</div>
+                  <div className="space-y-1">
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.recommendedBy?.name} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.recommendedBy?.designation} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.recommendedBy?.date} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
                   </div>
               </div>
 
-              {/* Column 3: Approved By */}
-              <div className="flex flex-col">
-                  <div className="font-bold mb-10">स्वीकृत गर्नेको दस्तखत:</div>
-                  <div className="border-t border-slate-400 pt-1 mt-auto">
-                    {formDetails.status === 'Approved' ? (
-                        <div>
-                            <div>नाम: {formDetails.approvedBy?.name}</div>
-                            <div>पद: {formDetails.approvedBy?.designation}</div>
-                        </div>
-                    ) : <div className="text-slate-300 italic">....................</div>}
+              <div className="col-span-4 pl-4">
+                  <div className="font-bold mb-2">स्टोरकिपरले भर्ने:</div>
+                  <div className="space-y-1 mb-4">
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className="text-slate-800">{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
+                        <span>क) बजारबाट खरिद गर्नु पर्ने</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className="text-slate-800">{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
+                        <span>ख) मौज्दातमा रहेको</span>
+                      </div>
+                  </div>
+                  <div className="space-y-1">
+                      <div className="mb-2">स्टोरकिपरको दस्तखत:.......</div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.storeKeeper?.name} onChange={e => setFormDetails({...formDetails, storeKeeper: {...formDetails.storeKeeper!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                  </div>
+              </div>
+
+              <div className="col-span-4 pr-4">
+                  <div className="font-bold mb-4">मालसामान बुझिलिनेको:</div>
+                  <div className="space-y-1">
+                      <div className="flex gap-2"><span>नाम:</span><input value={formDetails.receiver?.name} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.receiver?.designation} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.receiver?.date} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                  </div>
+              </div>
+
+              <div className="col-span-4 px-4">
+                  <div className="font-bold mb-4">खर्च निकासा खातामा चढाउने:.......</div>
+                  <div className="space-y-1">
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.ledgerEntry?.name} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.ledgerEntry?.designation} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.ledgerEntry?.date} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                  </div>
+              </div>
+
+              <div className="col-span-4 pl-4">
+                  <div className="font-bold mb-4">स्वीकृत गर्ने:.......</div>
+                  <div className="space-y-1">
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.approvedBy?.name} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.approvedBy?.designation} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.approvedBy?.date} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
                   </div>
               </div>
           </div>
