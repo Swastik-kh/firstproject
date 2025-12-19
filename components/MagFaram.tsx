@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Eye, Search, X, AlertCircle, ChevronRight, ArrowLeft, Check, Square } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings } from '../types';
@@ -89,12 +90,16 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.id.localeCompare(a.id));
   }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
 
-  const itemOptions = useMemo(() => inventoryItems.map(item => ({
-    id: item.id,
-    value: item.itemName,
-    label: `${item.itemName} (${item.unit})`,
-    itemData: item
-  })), [inventoryItems]);
+  // Updated itemOptions to show quantity and expendable/non-expendable status in the dropdown list
+  const itemOptions = useMemo(() => inventoryItems.map(item => {
+    const typeLabel = item.itemType === 'Expendable' ? 'खर्च हुने' : 'खर्च नहुने';
+    return {
+      id: item.id,
+      value: item.itemName,
+      label: `${item.itemName} (${item.unit}) - मौज्दात: ${item.currentQuantity} [${typeLabel}]`,
+      itemData: item
+    };
+  }), [inventoryItems]);
 
   const handleAddItem = () => setItems([...items, { id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
   const handleRemoveItem = (id: number) => items.length > 1 && setItems(items.filter(i => i.id !== id));
@@ -211,7 +216,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     <Save size={18} /> {editingId && editingId !== 'new' ? 'प्रमाणित/स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
                 </button>
             )}
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm">
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
                 <Printer size={18} /> प्रिन्ट गर्नुहोस्
             </button>
           </div>
@@ -323,11 +328,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                           </td>
                       </tr>
                   ))}
-                  {[...Array(Math.max(0, 4 - items.length))].map((_, i) => (
-                      <tr key={`empty-${i}`} className="h-8">
-                          <td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td><td className="border border-slate-800"></td>
-                      </tr>
-                  ))}
+                  {/* Empty rows logic removed as requested: table now shows only active item rows */}
               </tbody>
           </table>
 
