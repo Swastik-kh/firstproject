@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Eye, Search, X, AlertCircle, ChevronRight, ArrowLeft, Check, Square } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings } from '../types';
 import { SearchableSelect } from './SearchableSelect';
@@ -20,28 +20,28 @@ interface MagFaramProps {
 export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, generalSettings }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   const generateMagFormNo = (forms: MagFormEntry[], fy: string) => {
     const fyForms = forms.filter(f => f.fiscalYear === fy);
-    if (fyForms.length === 0) return "001";
+    if (fyForms.length === 0) return "0001-MF";
     
     const maxNo = fyForms.reduce((max, f) => {
         let val = 0;
         if (typeof f.formNo === 'string') {
             const parts = f.formNo.split('-');
             val = parseInt(parts[0]);
-        } else {
+        } else if (typeof f.formNo === 'number') {
             val = f.formNo;
         }
         return isNaN(val) ? max : Math.max(max, val);
     }, 0);
     
-    return String(maxNo + 1).padStart(2, '0');
+    return `${String(maxNo + 1).padStart(4, '0')}-MF`;
   };
 
   const todayBS = useMemo(() => {
     try {
-      /* Format matches YYYY-MM-DD for consistency with date picker */
       return new NepaliDate().format('YYYY-MM-DD');
     } catch (e) {
       return '';
@@ -60,9 +60,9 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
     recommendedBy: { name: '', designation: '', date: '' },
     storeKeeper: { status: 'stock', name: '' },
-    receiver: { name: '', designation: '', date: '' }, // Changed: Empty date by default
+    receiver: { name: '', designation: '', date: '' }, 
     ledgerEntry: { name: '', date: '' },
-    approvedBy: { name: '', designation: '', date: '' } // Changed: Empty date by default
+    approvedBy: { name: '', designation: '', date: '' } 
   });
 
   useEffect(() => {
@@ -90,7 +90,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.id.localeCompare(a.id));
   }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
 
-  // Updated itemOptions to show quantity and expendable/non-expendable status in the dropdown list
   const itemOptions = useMemo(() => inventoryItems.map(item => {
     const typeLabel = item.itemType === 'Expendable' ? 'खर्च हुने' : 'खर्च नहुने';
     return {
@@ -103,7 +102,28 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
   const handleAddItem = () => setItems([...items, { id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
   const handleRemoveItem = (id: number) => items.length > 1 && setItems(items.filter(i => i.id !== id));
-  const updateItem = (id: number, field: keyof MagItem, value: string) => setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
+  
+  const updateItem = useCallback((id: number, field: keyof MagItem, value: any) => {
+    setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, [field]: value } : item));
+  }, []);
+
+  const handleItemSelect = (id: number, option: Option) => {
+    const invItem = option.itemData as InventoryItem;
+    if (invItem) {
+        setItems(prevItems => prevItems.map(item => {
+            if (item.id === id) {
+                return {
+                    ...item,
+                    name: invItem.itemName,
+                    unit: invItem.unit,
+                    specification: invItem.specification || item.specification,
+                    // Keeping quantity and remarks as is
+                };
+            }
+            return item;
+        }));
+    }
+  };
 
   const updateStoreKeeperStatus = (status: string) => {
       if (isViewOnly) return;
@@ -118,9 +138,53 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       setIsViewOnly(viewOnly);
       setItems(form.items);
       setFormDetails({ ...form });
+      setValidationError(null);
   };
 
   const handleSave = () => {
+    setValidationError(null);
+
+    // Validation
+    if (!formDetails.date || formDetails.date.trim() === '') {
+        setValidationError("कृपया मिति भर्नुहोस्। (Please fill the date)");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    if (!formDetails.demandBy?.purpose || formDetails.demandBy.purpose.trim() === '') {
+        setValidationError("कृपया प्रयोजन भर्नुहोस्। (Please fill the purpose)");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    // Validate Items
+    if (items.length === 0) {
+        setValidationError("कृपया कम्तिमा एउटा सामान थप्नुहोस्। (Please add at least one item)");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    const validItems = items.filter(item => item.name && item.name.trim() !== '');
+    if (validItems.length === 0) {
+        setValidationError("कृपया कम्तिमा एउटा सामानको नाम भर्नुहोस्। (Please enter at least one item name)");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+        if (!items[i].name || items[i].name.trim() === '') {
+            setValidationError(`लहर नं ${i + 1} मा सामानको नाम खाली छ। (Item Name is empty in row ${i + 1})`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+        const qtyVal = items[i].quantity ? parseFloat(items[i].quantity.toString()) : 0;
+        if (!items[i].quantity || items[i].quantity.toString().trim() === '' || isNaN(qtyVal) || qtyVal <= 0) {
+            setValidationError(`लहर नं ${i + 1} मा परिमाण खाली छ वा मान्य छैन। (Quantity is empty or invalid in row ${i + 1})`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+    }
+
     let nextStatus = formDetails.status || 'Pending';
     if (editingId && editingId !== 'new') {
         if (isStoreKeeper && formDetails.status === 'Pending') nextStatus = 'Verified';
@@ -141,16 +205,21 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const handleReset = () => {
     setEditingId(null);
     setIsViewOnly(false);
+    setValidationError(null);
     setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
     setFormDetails({
-        id: '', items: [], fiscalYear: currentFiscalYear, formNo: generateMagFormNo(existingForms, currentFiscalYear),
-        date: todayBS, status: 'Pending',
+        id: '', 
+        items: [], 
+        fiscalYear: currentFiscalYear, 
+        formNo: generateMagFormNo(existingForms, currentFiscalYear),
+        date: todayBS, 
+        status: 'Pending',
         demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
         recommendedBy: { name: '', designation: '', date: '' },
         storeKeeper: { status: 'stock', name: '' },
-        receiver: { name: '', designation: '', date: '' }, // Changed: Empty on reset
+        receiver: { name: '', designation: '', date: '' }, 
         ledgerEntry: { name: '', date: '' },
-        approvedBy: { name: '', designation: '', date: '' } // Changed: Empty on reset
+        approvedBy: { name: '', designation: '', date: '' } 
     });
   };
 
@@ -222,6 +291,21 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           </div>
        </div>
 
+       {validationError && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start gap-3 animate-in slide-in-from-top-2 no-print">
+                <div className="text-red-500 mt-0.5">
+                    <AlertCircle size={24} />
+                </div>
+                <div className="flex-1">
+                    <h3 className="text-red-800 font-bold text-sm">विवरण भर्नुहोस् (Required Information)</h3>
+                    <p className="text-red-700 text-sm mt-1 whitespace-pre-line leading-relaxed font-nepali">{validationError}</p>
+                </div>
+                <button onClick={() => setValidationError(null)} className="text-red-400 hover:text-red-600 transition-colors">
+                    <X size={20} />
+                </button>
+            </div>
+       )}
+
        <div id="mag-form-print" className="bg-white p-6 md:p-10 max-w-[210mm] mx-auto min-h-[297mm] font-nepali text-slate-900 print:p-0 print:shadow-none print:w-full border shadow-lg rounded-xl">
           <div className="text-right font-bold text-[10px] mb-2">म.ले.प.फारम नं: ४०१</div>
           
@@ -265,7 +349,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                             inputClassName="!border-none !bg-transparent !p-0 !text-right !font-bold !h-auto !shadow-none !ring-0 border-b border-dotted border-slate-800 rounded-none w-full"
                             disabled={isViewOnly}
                             popupAlign="right"
-                            /* Restricted selection to today only as requested */
                             minDate={todayBS}
                             maxDate={todayBS}
                         />
@@ -309,7 +392,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                 <SearchableSelect 
                                     options={itemOptions} value={item.name} 
                                     onChange={val => updateItem(item.id, 'name', val)} 
-                                    onSelect={opt => updateItem(item.id, 'unit', opt.itemData.unit)} 
+                                    onSelect={opt => handleItemSelect(item.id, opt)} 
                                     className="!border-none !bg-transparent !p-1 !text-xs" placeholder="सामान छान्नुहोस्..."
                                 />
                               ) : <span className="px-2">{item.name}</span>}
@@ -328,7 +411,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                           </td>
                       </tr>
                   ))}
-                  {/* Empty rows logic removed as requested: table now shows only active item rows */}
               </tbody>
           </table>
 
