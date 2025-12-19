@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Eye, Search, X, AlertCircle, ChevronRight, ArrowLeft, Check, Square } from 'lucide-react';
+import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Eye, Search, X, AlertCircle, ChevronRight, ArrowLeft, Check, Square, Warehouse, Layers, ShieldCheck } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings } from '../types';
 import { SearchableSelect } from './SearchableSelect';
+import { Select } from './Select';
 import { NepaliDatePicker } from './NepaliDatePicker';
 // @ts-ignore
 import NepaliDate from 'nepali-date-converter';
@@ -22,11 +23,18 @@ interface MagFaramProps {
   generalSettings: OrganizationSettings;
 }
 
-export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, generalSettings }) => {
+export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, generalSettings, stores = [] }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   
+  // Verification Popup States
+  const [showVerifyPopup, setShowVerifyPopup] = useState(false);
+  const [verificationData, setVerificationData] = useState({
+      storeId: '',
+      itemType: '' as 'Expendable' | 'Non-Expendable' | ''
+  });
+
   const generateMagFormNo = (forms: MagFormEntry[], fy: string) => {
     const fyForms = forms.filter(f => f.fiscalYear === fy);
     if (fyForms.length === 0) return "0001-MF";
@@ -80,35 +88,41 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     }
   }, [editingId, existingForms, currentFiscalYear]);
 
-  const isStoreKeeper = currentUser.role === 'STOREKEEPER' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
+  // STRICTOR ROLE DEFINITIONS for action filtering
+  const isStrictStoreKeeper = currentUser.role === 'STOREKEEPER';
   const isAdminOrApproval = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
+  
+  // For permission to actually perform the action in the form
+  const canVerify = isStrictStoreKeeper || ['ADMIN', 'SUPER_ADMIN'].includes(currentUser.role);
+  const canApprove = isAdminOrApproval;
 
   // Workflow context helpers
   const isNewForm = !editingId || editingId === 'new';
-  const isVerifying = !isViewOnly && !isNewForm && isStoreKeeper && formDetails.status === 'Pending';
-  const isApproving = !isViewOnly && !isNewForm && isAdminOrApproval && formDetails.status === 'Verified';
+  const isVerifying = !isViewOnly && !isNewForm && canVerify && formDetails.status === 'Pending';
+  const isApproving = !isViewOnly && !isNewForm && canApprove && formDetails.status === 'Verified';
 
-  // Actionable: Forms that need THIS user's attention right now
+  // Actionable: ONLY Storekeeper sees Pending. Admins see Verified.
   const actionableForms = useMemo(() => {
-      if (isStoreKeeper) return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
-      if (isAdminOrApproval) return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
+      // 1. Storekeeper strictly sees forms waiting for verification
+      if (currentUser.role === 'STOREKEEPER') {
+          return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
+      }
+      // 2. Admin/Approver strictly sees forms that are already verified and waiting for final approval
+      if (['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role)) {
+          return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
+      }
       return [];
-  }, [existingForms, isStoreKeeper, isAdminOrApproval]);
+  }, [existingForms, currentUser.role]);
 
-  // History: Forms I created OR processed forms for Admin/Storekeeper
   const historyForms = useMemo(() => {
-      // 1. My own requests (Any status)
       const myForms = existingForms.filter(f => f.demandBy?.name === currentUser.fullName);
-      
-      // 2. Official historical records for processing roles (Approved/Rejected)
-      const officialHistory = (isAdminOrApproval || isStoreKeeper)
+      // History shows official records (Approved/Rejected) for all administrative roles
+      const officialHistory = (isAdminOrApproval || isStrictStoreKeeper)
           ? existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected')
           : [];
-      
-      // Combine and remove duplicates
       const combined = [...new Map([...myForms, ...officialHistory].map(item => [item.id, item])).values()];
       return combined.sort((a, b) => b.id.localeCompare(a.id));
-  }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
+  }, [existingForms, isAdminOrApproval, isStrictStoreKeeper, currentUser.fullName]);
 
   const itemOptions = useMemo(() => inventoryItems.map(item => {
     const typeLabel = item.itemType === 'Expendable' ? 'खर्च हुने' : 'खर्च नहुने';
@@ -120,11 +134,13 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     };
   }), [inventoryItems]);
 
+  const storeOptions: Option[] = useMemo(() => stores.map(s => ({ id: s.id, value: s.id, label: s.name })), [stores]);
+
   const handleAddItem = () => {
     if (items.length < 14) {
       setItems([...items, { id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     } else {
-      alert("अधिकतम १४ वटा सामान मात्र माग गर्न सकिन्छ। (Maximum 14 items can be requested)");
+      alert("अधिकतम १४ वटा सामान मात्र माग गर्न सकिन्छ।");
     }
   };
 
@@ -132,7 +148,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     if (items.length > 1) {
       setItems(items.filter(i => i.id !== id));
     } else {
-      // Clear last item
       setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     }
   };
@@ -182,7 +197,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           return { ...item, isFromInventory: matched };
       }));
       
-      // New Logic: If user previews a form that had an update, mark it as viewed
       if (viewOnly && form.isViewedByRequester === false && form.demandBy?.name === currentUser.fullName) {
           const updatedForm = { ...form, isViewedByRequester: true };
           onSave(updatedForm);
@@ -202,30 +216,59 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     const validItems = items.filter(item => item.name && item.name.trim() !== '');
     if (validItems.length === 0) { setValidationError("कृपया कम्तिमा एउटा सामानको नाम भर्नुहोस्।"); return; }
 
+    // If Storekeeper is verifying
+    if (isVerifying) {
+        // Only show metadata popup if the items are being issued from STOCK
+        // If it's for market purchase, we don't need to assign store/type right now
+        if (formDetails.storeKeeper?.status === 'stock') {
+            setShowVerifyPopup(true);
+            return;
+        }
+    }
+
+    finalizeSave();
+  };
+
+  const finalizeSave = (extraData?: { storeId: string, itemType: 'Expendable' | 'Non-Expendable' }) => {
     let nextStatus = formDetails.status || 'Pending';
-    let nextIsViewed = true; // Default for new forms
+    let nextIsViewed = true;
+
+    // Track original storekeeper data for update
+    let updatedStoreKeeper = { ...formDetails.storeKeeper };
 
     if (editingId && editingId !== 'new') {
-        if (isStoreKeeper && formDetails.status === 'Pending') {
+        if (isVerifying) {
             nextStatus = 'Verified';
-            nextIsViewed = false; // Mark unviewed for requester
+            nextIsViewed = false;
+            // Force current storekeeper name during verification
+            updatedStoreKeeper.name = currentUser.fullName;
         }
-        else if (isAdminOrApproval && formDetails.status === 'Verified') {
+        else if (isApproving) {
             nextStatus = 'Approved';
-            nextIsViewed = false; // Mark unviewed for requester
+            nextIsViewed = false;
         }
     }
 
     const itemsToSave = items.map(({ isFromInventory, ...rest }) => rest);
+    
     const newForm: MagFormEntry = {
         ...formDetails,
         id: editingId === 'new' || !editingId ? Date.now().toString() : editingId,
         items: itemsToSave,
         status: nextStatus,
-        isViewedByRequester: nextIsViewed
+        isViewedByRequester: nextIsViewed,
+        storeKeeper: updatedStoreKeeper
     };
+
+    const finalStoreId = extraData?.storeId || formDetails.selectedStoreId || '';
+    const finalItemType = extraData?.itemType || formDetails.issueItemType || '';
+
+    if (finalStoreId) newForm.selectedStoreId = finalStoreId;
+    if (finalItemType) newForm.issueItemType = finalItemType as any;
+
     onSave(newForm);
     alert("माग फारम सुरक्षित भयो।");
+    setShowVerifyPopup(false);
     handleReset();
   };
 
@@ -233,6 +276,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setEditingId(null);
     setIsViewOnly(false);
     setValidationError(null);
+    setShowVerifyPopup(false);
+    setVerificationData({ storeId: '', itemType: '' });
     setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     setFormDetails({
         id: '', items: [], fiscalYear: currentFiscalYear, 
@@ -267,20 +312,25 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             {actionableForms.length > 0 && (
                 <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden mb-6">
                     <div className="bg-orange-50 px-6 py-3 border-b border-orange-100 flex justify-between items-center text-orange-800">
-                        <h3 className="font-bold font-nepali flex items-center gap-2"><Clock size={18} /> कारबाहीको लागि बाँकी</h3>
+                        <div className="flex items-center gap-2"><Clock size={18} /><h3 className="font-bold font-nepali">
+                            {isStrictStoreKeeper ? 'प्रमाणिकरणको लागि बाँकी' : 'स्वीकृतिको लागि बाँकी'}
+                        </h3></div>
+                        <span className="bg-orange-200 text-xs font-bold px-2 py-0.5 rounded-full">{actionableForms.length} Forms</span>
                     </div>
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-600">
+                        <thead className="bg-slate-50 text-slate-600 font-medium">
                             <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Requested By</th><th className="px-6 py-3">Date</th><th className="px-6 py-3 text-right">Action</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {actionableForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50/50">
+                                <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 font-mono font-bold text-slate-700">#{f.formNo}</td>
                                     <td className="px-6 py-4">{f.demandBy?.name}</td>
                                     <td className="px-6 py-4 font-nepali">{f.date}</td>
                                     <td className="px-6 py-4 text-right">
-                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline bg-primary-50 px-3 py-1.5 rounded-lg">Verify/Approve</button>
+                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline bg-primary-50 px-3 py-1.5 rounded-lg">
+                                            {isStrictStoreKeeper ? 'Verify Now' : 'Review & Approve'}
+                                        </button>
                                     </td>
                                 </tr>
                             ))}
@@ -292,7 +342,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2"><FileText size={18} /> फारम इतिहास (History)</div>
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500">
+                    <thead className="bg-slate-50 text-slate-500 font-medium">
                         <tr><th className="px-6 py-3">Form No</th><th className="px-6 py-3">Date</th><th className="px-6 py-3">Status</th><th className="px-6 py-3 text-right">Action</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -348,7 +398,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           <div className="flex gap-2">
             {!isViewOnly && (
                 <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">
-                    <Save size={18} /> {editingId && editingId !== 'new' ? 'प्रमाणित/स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
+                    <Save size={18} /> {isVerifying ? 'प्रमाणित गर्नुहोस्' : isApproving ? 'स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
                 </button>
             )}
             <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
@@ -495,7 +545,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           </table>
 
           {isNewForm && items.length < 14 && (
-            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200 hover:bg-primary-100">
+            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200 hover:bg-primary-100 transition-all">
                 <Plus size={12} /> थप्नुहोस् (Add Row)
             </button>
           )}
@@ -566,6 +616,99 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
               </div>
           </div>
        </div>
+
+       {/* VERIFICATION METADATA POPUP */}
+       {showVerifyPopup && (
+           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowVerifyPopup(false)}></div>
+               <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                    <div className="px-6 py-4 border-b bg-indigo-600 text-white flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <ShieldCheck size={20} />
+                            <h3 className="font-bold font-nepali">दाखिला/निकासा विवरण (Verification)</h3>
+                        </div>
+                        <button onClick={() => setShowVerifyPopup(false)} className="p-1 hover:bg-white/20 rounded-full transition-colors"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="p-6 space-y-6">
+                        <div className="space-y-4">
+                            <Select 
+                                label="गोदाम/स्टोर छान्नुहोस् (Select Store)"
+                                options={storeOptions}
+                                value={verificationData.storeId}
+                                onChange={(e) => setVerificationData({...verificationData, storeId: e.target.value})}
+                                icon={<Warehouse size={18} className="text-indigo-600"/>}
+                                required
+                            />
+                            
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <Layers size={18} className="text-indigo-600" />
+                                    सामानको प्रकार (Item Category) *
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setVerificationData({...verificationData, itemType: 'Expendable'})}
+                                        className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all gap-2 ${
+                                            verificationData.itemType === 'Expendable' 
+                                            ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-md' 
+                                            : 'bg-white border-slate-100 text-slate-500 hover:border-orange-200'
+                                        }`}
+                                    >
+                                        <Layers size={24} />
+                                        <span className="text-xs font-bold font-nepali">खर्च भएर जाने</span>
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setVerificationData({...verificationData, itemType: 'Non-Expendable'})}
+                                        className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all gap-2 ${
+                                            verificationData.itemType === 'Non-Expendable' 
+                                            ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-md' 
+                                            : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200'
+                                        }`}
+                                    >
+                                        <ShieldCheck size={24} />
+                                        <span className="text-xs font-bold font-nepali">खर्च नहुने</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100 flex items-start gap-2">
+                            <AlertCircle size={16} className="text-indigo-600 mt-0.5 shrink-0" />
+                            <p className="text-[10px] text-indigo-700 font-medium leading-relaxed">
+                                यहाँ छानिएको विवरण अनुसार सामान स्टकबाट काटिने वा नयाँ 'निकासा प्रतिवेदन' मा सूचीकृत हुनेछ। कृपया सही गोदाम र प्रकार छान्नुहोस्।
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border-t flex gap-3">
+                        <button 
+                            type="button"
+                            onClick={() => setShowVerifyPopup(false)}
+                            className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors"
+                        >
+                            रद्द गर्नुहोस्
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                if (!verificationData.storeId || !verificationData.itemType) {
+                                    alert("कृपया स्टोर र सामानको प्रकार दुवै छान्नुहोस्।");
+                                    return;
+                                }
+                                finalizeSave(verificationData as any);
+                            }}
+                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle2 size={18} />
+                            प्रमाणित गर्नुहोस्
+                        </button>
+                    </div>
+               </div>
+           </div>
+       )}
     </div>
   );
 };

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback, useMemo } from 'react';
 import { FileOutput, ChevronRight, ArrowLeft, Printer, CheckCircle2, ShieldCheck, X, Clock, Eye, Send, FileText, AlertCircle } from 'lucide-react';
 import { IssueReportEntry, MagItem, User, OrganizationSettings } from '../types';
@@ -249,7 +248,8 @@ export const NikashaPratibedan: React.FC<NikashaPratibedanProps> = ({ reports, o
             preparedBy: updatedPreparedBy,
             recommendedBy: reportDetails.recommendedBy,
             approvedBy: updatedApprovedBy,
-            rejectionReason: undefined 
+            // Re-set to null instead of undefined as Firebase fails with undefined
+            rejectionReason: "" 
         };
 
         onSave(updatedReport);
@@ -502,7 +502,7 @@ export const NikashaPratibedan: React.FC<NikashaPratibedanProps> = ({ reports, o
                                         <td className="border border-slate-900 p-1 font-bold">{item.quantity}</td>
                                         <td className="border border-slate-900 p-1 text-right">{item.rate || '-'}</td>
                                         <td className="border border-slate-900 p-1 text-right font-bold">{item.totalAmount ? item.totalAmount.toFixed(2) : '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-left px-2">{item.remarks}</td>
+                                        <td className="border border-slate-900 p-1 text-left px-1 italic">{item.remarks}</td>
                                     </tr>
                                 ))}
                                 <tr className="font-bold">
