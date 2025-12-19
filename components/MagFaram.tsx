@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft } from 'lucide-react';
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
@@ -20,6 +19,16 @@ interface MagFaramProps {
 export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUser, existingForms, onSave, inventoryItems, stores = [], generalSettings }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
+  
+  // Calculate Today in Nepali for Restrictions
+  const todayBS = useMemo(() => {
+    try {
+      return new NepaliDate().format('YYYY-MM-DD');
+    } catch (e) {
+      return '';
+    }
+  }, []);
+
   const [items, setItems] = useState<MagItem[]>([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
   
   const [formDetails, setFormDetails] = useState<MagFormEntry>({
@@ -27,7 +36,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     items: [],
     fiscalYear: currentFiscalYear,
     formNo: 1,
-    date: '',
+    date: todayBS, // Default to today
     status: 'Pending',
     demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
     recommendedBy: { name: '', designation: '', date: '' },
@@ -53,7 +62,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
   // History accessible to all users
   const historyForms = useMemo(() => {
-      // Admins see all completed, others see their own
       if (isAdminOrApproval || isStoreKeeper) {
           return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.formNo - a.formNo);
       }
@@ -118,7 +126,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         items: [],
         fiscalYear: currentFiscalYear,
         formNo: existingForms.length + 1,
-        date: '',
+        date: todayBS,
         status: 'Pending',
         demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: '', purpose: '' },
         recommendedBy: { name: '', designation: '', date: '' },
@@ -275,6 +283,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     inputClassName="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold placeholder:text-slate-400 placeholder:font-normal rounded-none px-0 py-0 h-auto focus:ring-0 focus:border-slate-800"
                     wrapperClassName="w-32"
                     disabled={isViewOnly || (editingId && editingId !== 'new' && !isAdminOrApproval && !isStoreKeeper)}
+                    minDate={todayBS}
+                    maxDate={todayBS}
                   />
               </div>
           </div>
@@ -318,18 +328,19 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                           </td>
                       </tr>
                   ))}
-                  {/* Fill empty rows to make it look like a real form */}
-                  {items.length < 5 && [...Array(5 - items.length)].map((_, i) => (
-                      <tr key={`empty-${i}`} className="h-10">
-                          <td className="border border-slate-900"></td>
-                          <td className="border border-slate-900"></td>
-                          <td className="border border-slate-900"></td>
-                          <td className="border border-slate-900"></td>
-                          <td className="border border-slate-900"></td>
-                      </tr>
-                  ))}
               </tbody>
           </table>
+
+          {!isViewOnly && (
+            <div className="mt-4 no-print">
+                <button 
+                    onClick={handleAddItem}
+                    className="flex items-center gap-2 text-primary-600 hover:text-primary-700 text-xs font-bold px-3 py-2 bg-primary-50 rounded-lg border border-dashed border-primary-200 transition-all hover:bg-primary-100"
+                >
+                    <Plus size={14} /> लहर थप्नुहोस् (Add Row)
+                </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-8 mt-16 text-sm">
               <div>
