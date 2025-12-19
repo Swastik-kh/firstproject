@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { CheckCircle2, X, Eye, ClipboardCheck, AlertCircle, Calendar, Store as StoreIcon, Package, Clock } from 'lucide-react';
+import { CheckCircle2, X, Eye, ClipboardCheck, AlertCircle, Calendar, Store as StoreIcon, Package, Clock, HelpCircle, ShieldCheck } from 'lucide-react';
 import { StockEntryRequest, User, Store } from '../types';
 
 interface StockEntryApprovalProps {
@@ -19,6 +20,7 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
 }) => {
   const [selectedRequest, setSelectedRequest] = useState<StockEntryRequest | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [activeTab, setActiveTab] = useState<'Pending' | 'History'>('Pending');
 
@@ -28,11 +30,17 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
       return req.status !== 'Pending'; // History shows Approved/Rejected
   }).sort((a, b) => parseInt(b.id) - parseInt(a.id)); // Sort by newest first
 
-  const handleApproveClick = (request: StockEntryRequest) => {
-      if (window.confirm('के तपाइँ निश्चित हुनुहुन्छ कि तपाइँ यो स्टक प्रविष्टि अनुरोध स्वीकृत गर्न चाहनुहुन्छ? यसले सामान मौज्दातमा थप्नेछ। (Are you sure you want to approve this stock entry request? This will add items to inventory.)')) {
-          onApprove(request.id, currentUser.fullName);
-          setSelectedRequest(null); // Close detail view
-      }
+  const handleApproveClick = () => {
+      if (!selectedRequest) return;
+      setShowApproveConfirm(true);
+  };
+
+  const confirmApproval = () => {
+      if (!selectedRequest) return;
+      onApprove(selectedRequest.id, currentUser.fullName);
+      setShowApproveConfirm(false);
+      setSelectedRequest(null);
+      alert("दाखिला स्वीकृत भयो र मौज्दातमा सामान थपियो। (Entry approved and items added to stock.)");
   };
 
   const handleRejectClick = (request: StockEntryRequest) => {
@@ -160,7 +168,7 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
       </div>
 
       {/* Details Modal */}
-      {selectedRequest && !showRejectModal && (
+      {selectedRequest && !showRejectModal && !showApproveConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedRequest(null)}></div>
               
@@ -195,18 +203,6 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
                               <label className="text-xs text-slate-500 font-bold uppercase">Requester</label>
                               <p className="font-medium text-slate-800">{selectedRequest.requestedBy}</p>
                           </div>
-                          {selectedRequest.supplier && (
-                              <div className="col-span-2">
-                                  <label className="text-xs text-slate-500 font-bold uppercase">Supplier</label>
-                                  <p className="font-medium text-slate-800">{selectedRequest.supplier}</p>
-                              </div>
-                          )}
-                          {selectedRequest.refNo && (
-                              <div className="col-span-2">
-                                  <label className="text-xs text-slate-500 font-bold uppercase">Ref No</label>
-                                  <p className="font-medium text-slate-800">{selectedRequest.refNo}</p>
-                              </div>
-                          )}
                       </div>
 
                       {selectedRequest.status === 'Rejected' && (
@@ -227,15 +223,12 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
                               <thead className="bg-slate-50 text-slate-600 font-medium">
                                   <tr>
                                       <th className="px-4 py-2 border-b min-w-[200px]">Item Name / Class</th>
-                                      <th className="px-4 py-2 border-b">Codes (Unique/Sanket)</th>
-                                      <th className="px-4 py-2 border-b">Dakhila No</th>
+                                      <th className="px-4 py-2 border-b">Codes</th>
                                       <th className="px-4 py-2 border-b">Type</th>
                                       <th className="px-4 py-2 border-b">Unit</th>
                                       <th className="px-4 py-2 border-b text-center">Qty</th>
                                       <th className="px-4 py-2 border-b text-right">Rate</th>
-                                      <th className="px-4 py-2 border-b text-right">Tax (%)</th>
                                       <th className="px-4 py-2 border-b text-right">Total</th>
-                                      <th className="px-4 py-2 border-b min-w-[150px]">Batch / Expiry</th>
                                       <th className="px-4 py-2 border-b min-w-[200px]">Remarks</th>
                                   </tr>
                               </thead>
@@ -247,11 +240,8 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
                                               <div className="text-xs text-slate-500">{item.itemClassification || '-'}</div>
                                           </td>
                                           <td className="px-4 py-2 border-b text-xs text-slate-500 align-top">
-                                              <div><span className="font-bold text-slate-400">U:</span> {item.uniqueCode || '-'}</div>
-                                              <div><span className="font-bold text-slate-400">S:</span> {item.sanketNo || '-'}</div>
-                                          </td>
-                                          <td className="px-4 py-2 border-b text-xs text-slate-500 align-top font-mono">
-                                              {item.dakhilaNo || '-'}
+                                              <div>U: {item.uniqueCode || '-'}</div>
+                                              <div>S: {item.sanketNo || '-'}</div>
                                           </td>
                                           <td className="px-4 py-2 border-b text-xs align-top">
                                               <span className={`px-2 py-0.5 rounded border ${
@@ -263,18 +253,7 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
                                           <td className="px-4 py-2 border-b align-top">{item.unit}</td>
                                           <td className="px-4 py-2 border-b text-center font-bold text-slate-800 align-top bg-slate-50/50">{item.currentQuantity}</td>
                                           <td className="px-4 py-2 border-b text-right align-top">{item.rate ? item.rate.toFixed(2) : '-'}</td>
-                                          <td className="px-4 py-2 border-b text-right align-top">{item.tax || 0}%</td>
                                           <td className="px-4 py-2 border-b text-right font-bold align-top">{item.totalAmount?.toFixed(2)}</td>
-                                          <td className="px-4 py-2 border-b text-xs align-top">
-                                              {item.batchNo || item.expiryDateBs ? (
-                                                  <>
-                                                      <div><span className="font-bold text-slate-400">B:</span> {item.batchNo || '-'}</div>
-                                                      <div><span className="font-bold text-slate-400">E:</span> {item.expiryDateBs || '-'}</div>
-                                                  </>
-                                              ) : (
-                                                  <span className="text-slate-300">-</span>
-                                              )}
-                                          </td>
                                           <td className="px-4 py-2 border-b text-xs text-slate-600 align-top italic whitespace-normal">
                                               {item.remarks || '-'}
                                           </td>
@@ -302,13 +281,51 @@ export const StockEntryApproval: React.FC<StockEntryApprovalProps> = ({
                                   <X size={16} /> Reject Request
                               </button>
                               <button 
-                                  onClick={() => handleApproveClick(selectedRequest)}
+                                  onClick={handleApproveClick}
                                   className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white hover:bg-teal-700 rounded-lg text-sm font-medium shadow-sm transition-colors"
                               >
                                   <CheckCircle2 size={16} /> Approve & Add to Stock
                               </button>
                           </>
                       )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* APPROVE CONFIRMATION POPUP (Custom Modal) */}
+      {showApproveConfirm && selectedRequest && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowApproveConfirm(false)}></div>
+              
+              <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                  <div className="p-8 text-center">
+                      <div className="w-20 h-20 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner ring-4 ring-teal-50">
+                          <HelpCircle size={40} />
+                      </div>
+                      
+                      <h3 className="text-2xl font-bold text-slate-800 font-nepali mb-3">दाखिला स्वीकृत (Approve Entry)?</h3>
+                      
+                      <p className="text-slate-600 mb-2 font-medium">के तपाईं जिन्सी सामान दाखिला स्वीकृत गर्न चाहनुहुन्छ?</p>
+                      <p className="text-xs text-slate-400 bg-slate-50 p-2 rounded border border-slate-100">
+                          स्वीकृत गरेपछि, <strong>{selectedRequest.items.length}</strong> वटा सामानहरू <strong>{getStoreName(selectedRequest.storeId)}</strong> गोदाममा थपिनेछन्।
+                      </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-px bg-slate-100 border-t border-slate-100">
+                      <button 
+                          onClick={() => setShowApproveConfirm(false)}
+                          className="bg-white py-4 text-slate-500 font-bold hover:bg-slate-50 transition-colors text-sm uppercase tracking-wider"
+                      >
+                          हुँदैन (Cancel)
+                      </button>
+                      <button 
+                          onClick={confirmApproval}
+                          className="bg-white py-4 text-teal-600 font-bold hover:bg-teal-50 transition-colors text-sm border-l border-slate-100 flex items-center justify-center gap-2 uppercase tracking-wider"
+                      >
+                          <ShieldCheck size={18} />
+                          हुन्छ (Confirm)
+                      </button>
                   </div>
               </div>
           </div>

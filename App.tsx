@@ -23,7 +23,6 @@ const INITIAL_SETTINGS: OrganizationSettings = {
     logoUrl: ''
 };
 
-// superadmin user credentials set to admin / admin
 const DEFAULT_ADMIN: User = {
     id: 'superadmin',
     username: 'admin',
@@ -43,7 +42,6 @@ const App: React.FC = () => {
   const [generalSettings, setGeneralSettings] = useState<OrganizationSettings>(INITIAL_SETTINGS);
   const [isDbConnected, setIsDbConnected] = useState(false);
   
-  // Data States
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [magForms, setMagForms] = useState<MagFormEntry[]>([]);
@@ -63,7 +61,6 @@ const App: React.FC = () => {
     const connectedRef = ref(db, ".info/connected");
     onValue(connectedRef, (snap) => setIsDbConnected(snap.val() === true));
 
-    // Ensure Default Admin exists in Database automatically
     const adminRef = ref(db, 'users/superadmin');
     get(adminRef).then((snapshot) => {
         if (!snapshot.exists()) {
@@ -116,40 +113,38 @@ const App: React.FC = () => {
   };
 
   const handleApproveStockEntry = async (requestId: string, approverName: string) => {
-      const requestRef = ref(db, `stockRequests/${requestId}`);
-      const requestSnap = await get(requestRef);
-      
-      if (requestSnap.exists()) {
+      try {
+          const requestRef = ref(db, `stockRequests/${requestId}`);
+          const requestSnap = await get(requestRef);
+          
+          if (!requestSnap.exists()) return;
           const request: StockEntryRequest = requestSnap.val();
           
-          // 1. Mark request as Approved
-          await update(requestRef, { 
-              status: 'Approved', 
-              approvedBy: approverName 
-          });
+          // 1. Get Latest Inventory to ensure we have the most current quantities
+          const invAllSnap = await get(ref(db, 'inventory'));
+          const currentInvData = invAllSnap.val() || {};
+          const currentInvList: InventoryItem[] = Object.keys(currentInvData).map(k => ({ ...currentInvData[k], id: k }));
 
+          const updates: Record<string, any> = {};
           const dakhilaItems: DakhilaItem[] = [];
 
-          // 2. Add/Update items in Main Inventory
+          // 2. Prepare updates for each item
           for (const item of request.items) {
-              let finalItemId = item.id;
-              
-              // If it's a temporary ID, generate a permanent one
-              if (item.id.startsWith('TEMP-')) {
-                  finalItemId = `ITEM-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-              }
+              // Exact item match logic: Name + Store + Type
+              const existingItem = currentInvList.find(i => 
+                  i.itemName.trim().toLowerCase() === item.itemName.trim().toLowerCase() && 
+                  i.storeId === request.storeId &&
+                  i.itemType === item.itemType
+              );
 
-              const invRef = ref(db, `inventory/${finalItemId}`);
-              const existingSnap = await get(invRef);
-              
               const incomingQty = Number(item.currentQuantity) || 0;
               const incomingRate = Number(item.rate) || 0;
               const incomingTax = Number(item.tax) || 0;
               const incomingExclVat = incomingQty * incomingRate;
               const incomingVatAmount = incomingExclVat * (incomingTax / 100);
-              const incomingValue = incomingExclVat + incomingVatAmount;
+              const incomingTotal = incomingExclVat + incomingVatAmount;
 
-              // Build Formal Dakhila Item for Report
+              // Data for Formal Report
               dakhilaItems.push({
                   id: Date.now() + Math.random(),
                   name: item.itemName,
@@ -161,43 +156,51 @@ const App: React.FC = () => {
                   rate: incomingRate,
                   totalAmount: incomingExclVat,
                   vatAmount: incomingVatAmount,
-                  grandTotal: incomingValue,
+                  grandTotal: incomingTotal,
                   otherExpenses: 0,
-                  finalTotal: incomingValue,
+                  finalTotal: incomingTotal,
                   remarks: item.remarks || ''
               });
 
-              if (existingSnap.exists()) {
-                  const existingItem: InventoryItem = existingSnap.val();
-                  const newTotalQty = (Number(existingItem.currentQuantity) || 0) + incomingQty;
-                  const newTotalValue = (Number(existingItem.totalAmount) || 0) + incomingValue;
-
-                  await update(invRef, {
-                      ...item, 
-                      id: finalItemId,
-                      currentQuantity: newTotalQty,
-                      totalAmount: isNaN(newTotalValue) ? 0 : newTotalValue,
+              if (existingItem) {
+                  // UPDATE EXISTING ITEM
+                  const newQty = (Number(existingItem.currentQuantity) || 0) + incomingQty;
+                  const newVal = (Number(existingItem.totalAmount) || 0) + incomingTotal;
+                  
+                  updates[`inventory/${existingItem.id}`] = {
+                      ...existingItem,
+                      ...item, // Update meta info from latest entry
+                      id: existingItem.id, // KEEP ORIGINAL ID
+                      currentQuantity: newQty,
+                      totalAmount: newVal,
                       lastUpdateDateBs: request.requestDateBs,
                       lastUpdateDateAd: request.requestDateAd,
                       receiptSource: request.receiptSource,
                       fiscalYear: request.fiscalYear,
-                      storeId: request.storeId
-                  });
+                      storeId: request.storeId,
+                      dakhilaNo: request.items[0]?.dakhilaNo || existingItem.dakhilaNo
+                  };
               } else {
-                  await set(invRef, {
+                  // CREATE NEW ITEM
+                  const newId = `ITEM-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+                  updates[`inventory/${newId}`] = {
                       ...item,
-                      id: finalItemId,
-                      totalAmount: isNaN(incomingValue) ? 0 : incomingValue,
+                      id: newId,
+                      totalAmount: incomingTotal,
                       lastUpdateDateBs: request.requestDateBs,
                       lastUpdateDateAd: request.requestDateAd,
                       receiptSource: request.receiptSource,
                       fiscalYear: request.fiscalYear,
                       storeId: request.storeId
-                  });
+                  };
               }
           }
 
-          // 3. ARCHIVE AS FORMAL DAKHILA REPORT (Form 403)
+          // 3. Mark request as Approved
+          updates[`stockRequests/${requestId}/status`] = 'Approved';
+          updates[`stockRequests/${requestId}/approvedBy`] = approverName;
+
+          // 4. Archive as Formal Dakhila Report
           const formalDakhilaId = `DA-${Date.now()}`;
           const formalReport: DakhilaPratibedanEntry = {
               id: formalDakhilaId,
@@ -210,8 +213,15 @@ const App: React.FC = () => {
               preparedBy: { name: request.requesterName || request.requestedBy, designation: request.requesterDesignation || 'Staff' },
               approvedBy: { name: approverName, designation: 'Approver' }
           };
-          
-          await set(ref(db, `dakhilaReports/${formalDakhilaId}`), formalReport);
+          updates[`dakhilaReports/${formalDakhilaId}`] = formalReport;
+
+          // Perform atomic update
+          await update(ref(db), updates);
+          console.log("Approval and Stock Update successful.");
+
+      } catch (error) {
+          console.error("Error during stock approval:", error);
+          alert("अनुमोदन प्रक्रियामा समस्या आयो। कृपया पुनः प्रयास गर्नुहोस्।");
       }
   };
 
@@ -238,10 +248,7 @@ const App: React.FC = () => {
           rabiesPatients={rabiesPatients}
           onAddRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
           onUpdateRabiesPatient={(p) => set(ref(db, `rabiesPatients/${p.id}`), p)}
-          onDeletePatient={(id) => {
-            const patientRef = ref(db, `rabiesPatients/${id}`);
-            remove(patientRef).catch(err => console.error("Error deleting patient:", err));
-          }}
+          onDeletePatient={(id) => remove(ref(db, `rabiesPatients/${id}`))}
           firms={firms}
           onAddFirm={(f) => set(ref(db, `firms/${f.id}`), f)}
           quotations={quotations}
