@@ -13,8 +13,8 @@ interface RabiesRegistrationProps {
   patients: RabiesPatient[];
   onAddPatient: (patient: RabiesPatient) => void;
   onUpdatePatient: (patient: RabiesPatient) => void;
-  onDeletePatient?: (patientId: string) => void; // Prop for deleting patient
-  currentUser: UserType; // To check role
+  onDeletePatient?: (patientId: string) => void; 
+  currentUser: UserType; 
 }
 
 const nepaliMonthOptions = [
@@ -189,6 +189,7 @@ export const RabiesRegistration: React.FC<RabiesRegistrationProps> = ({
   };
 
   const handleDeleteClick = (pId: string, pName: string) => {
+      if (!pId) return;
       if (window.confirm(`के तपाईं निश्चित हुनुहुन्छ कि तपाईं "${pName}" को विवरण हटाउन चाहनुहुन्छ? यो कार्य पूर्ववत गर्न सकिँदैन।`)) {
           if (onDeletePatient) {
               onDeletePatient(pId);

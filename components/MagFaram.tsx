@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Printer, Save, Calendar, CheckCircle2, Send, Clock, FileText, Download, ShieldCheck, CheckCheck, Eye, Search, X, AlertCircle, Store as StoreIcon, Layers, ChevronRight, ArrowLeft } from 'lucide-react';
-// Import Signature and StoreKeeperSignature to satisfy explicit state typing
 import { User, MagItem, MagFormEntry, InventoryItem, Option, Store, OrganizationSettings, Signature, StoreKeeperSignature } from '../types';
 import { SearchableSelect } from './SearchableSelect';
 import { NepaliDatePicker } from './NepaliDatePicker';
@@ -23,7 +22,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [items, setItems] = useState<MagItem[]>([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
   
-  // Explicitly type formDetails state as MagFormEntry to handle Signature optionality correctly
   const [formDetails, setFormDetails] = useState<MagFormEntry>({
     id: '',
     items: [],
@@ -41,9 +39,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
   const isStoreKeeper = currentUser.role === 'STOREKEEPER';
   const isAdminOrApproval = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
-  const isRegularUser = currentUser.role === 'STAFF';
 
-  // Filter Actionable Forms for Storekeeper and Admin
+  // All actionable forms for admins/storekeepers
   const actionableForms = useMemo(() => {
       if (isStoreKeeper) {
           return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.formNo - a.formNo);
@@ -54,13 +51,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       return [];
   }, [existingForms, isStoreKeeper, isAdminOrApproval]);
 
-  // History for Regular Users and General
+  // History accessible to all users
   const historyForms = useMemo(() => {
-      if (isRegularUser) {
-          return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.formNo - a.formNo);
+      // Admins see all completed, others see their own
+      if (isAdminOrApproval || isStoreKeeper) {
+          return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.formNo - a.formNo);
       }
-      return existingForms.filter(f => f.status === 'Approved' || f.status === 'Rejected').sort((a, b) => b.formNo - a.formNo);
-  }, [existingForms, isRegularUser, currentUser.fullName]);
+      return existingForms.filter(f => f.demandBy?.name === currentUser.fullName).sort((a, b) => b.formNo - a.formNo);
+  }, [existingForms, isAdminOrApproval, isStoreKeeper, currentUser.fullName]);
 
   const itemOptions = useMemo(() => inventoryItems.map(item => ({
     id: item.id,
@@ -77,10 +75,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
       setEditingId(form.id);
       setIsViewOnly(viewOnly);
       setItems(form.items);
-      // Correctly merge form object into typed state
       setFormDetails({
           ...form,
-          // Auto-fill role based details if acting
           storeKeeper: isStoreKeeper && form.status === 'Pending' ? { status: 'stock', name: currentUser.fullName } : form.storeKeeper || { status: '', name: '' },
           approvedBy: isAdminOrApproval && form.status === 'Verified' ? { name: currentUser.fullName, designation: currentUser.designation, date: '' } : form.approvedBy || { name: '', designation: '', date: '' }
       });
@@ -92,7 +88,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     let nextStatus = formDetails.status || 'Pending';
     let successMsg = "माग फारम सुरक्षित भयो (Saved Successfully)";
 
-    if (editingId) {
+    if (editingId && editingId !== 'new') {
         if (isStoreKeeper && formDetails.status === 'Pending') {
             nextStatus = 'Verified';
             successMsg = "फारम प्रमाणित गरी स्वीकृतिको लागि पठाइयो (Verified and forwarded for approval)";
@@ -104,7 +100,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
 
     const newForm: MagFormEntry = {
         ...formDetails,
-        id: editingId || Date.now().toString(),
+        id: editingId === 'new' ? Date.now().toString() : (editingId || Date.now().toString()),
         items,
         status: nextStatus
     };
@@ -133,22 +129,20 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     });
   };
 
-  if (!editingId && (isStoreKeeper || isAdminOrApproval || historyForms.length > 0)) {
+  if (!editingId) {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-center border-b border-slate-200 pb-4">
                 <div>
                     <h2 className="text-xl font-bold text-slate-800 font-nepali">माग फारम व्यवस्थापन (Mag Faram Management)</h2>
-                    <p className="text-sm text-slate-500">अनुरोधहरू प्रमाणिकरण र स्वीकृत गर्नुहोस्</p>
+                    <p className="text-sm text-slate-500">नयाँ माग फारम भर्नुहोस् वा पुराना विवरणहरू हेर्नुहोस्</p>
                 </div>
-                {isRegularUser && (
-                    <button onClick={() => setEditingId('new')} className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm hover:bg-primary-700">
-                        <Plus size={18} /> नयाँ माग फारम
-                    </button>
-                )}
+                <button onClick={() => setEditingId('new')} className="bg-primary-600 text-white px-6 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all active:scale-95 font-bold font-nepali">
+                    <Plus size={20} /> नयाँ माग फारम (Create New)
+                </button>
             </div>
 
-            {/* ACTIONABLE LIST FOR STOREKEEPER / ADMIN */}
+            {/* ACTIONABLE LIST */}
             {(isStoreKeeper || isAdminOrApproval) && actionableForms.length > 0 && (
                 <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
                     <div className="bg-orange-50 px-6 py-3 border-b border-orange-100 flex justify-between items-center text-orange-800">
@@ -175,7 +169,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                     <td className="px-6 py-3 font-nepali">{f.date}</td>
                                     <td className="px-6 py-3 text-slate-500">{f.items.length} items</td>
                                     <td className="px-6 py-3 text-right">
-                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline flex items-center gap-1 ml-auto">
+                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline flex items-center gap-1 ml-auto bg-primary-50 px-3 py-1 rounded-lg">
                                             {isStoreKeeper ? 'Verify' : 'Approve'} <ChevronRight size={14} />
                                         </button>
                                     </td>
@@ -189,7 +183,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             {/* HISTORY LIST */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 text-slate-700 font-bold font-nepali flex items-center gap-2">
-                    <FileText size={18} /> फारम इतिहास (History)
+                    <FileText size={18} /> फारम इतिहास (Form History)
                 </div>
                 <table className="w-full text-sm text-left">
                     <thead className="bg-slate-50 text-slate-500 font-medium">
@@ -202,23 +196,24 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {historyForms.length === 0 ? (
-                            <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">No history found</td></tr>
+                            <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic font-nepali">कुनै डाटा फेला परेन</td></tr>
                         ) : (
                             historyForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50">
-                                    <td className="px-6 py-3 font-mono">#{f.formNo}</td>
+                                <tr key={f.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-3 font-mono font-bold text-slate-700">#{f.formNo}</td>
                                     <td className="px-6 py-3 font-nepali">{f.date}</td>
                                     <td className="px-6 py-3">
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
                                             f.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' :
                                             f.status === 'Pending' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                            f.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                                             'bg-blue-50 text-blue-700 border-blue-200'
                                         }`}>
                                             {f.status}
                                         </span>
                                     </td>
                                     <td className="px-6 py-3 text-right">
-                                        <button onClick={() => handleLoadForm(f, true)} className="text-slate-400 hover:text-primary-600">
+                                        <button onClick={() => handleLoadForm(f, true)} className="text-slate-400 hover:text-primary-600 p-2 hover:bg-primary-50 rounded-full transition-all" title="View Format">
                                             <Eye size={18} />
                                         </button>
                                     </td>
@@ -236,22 +231,22 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     <div className="space-y-6">
        <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm no-print">
           <div className="flex items-center gap-3">
-              <button onClick={handleReset} className="p-2 hover:bg-slate-100 rounded-full text-slate-500"><ArrowLeft size={20} /></button>
-              <h2 className="font-bold text-slate-700 font-nepali text-lg">माग फारम (Mag Faram)</h2>
+              <button onClick={handleReset} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+              <h2 className="font-bold text-slate-700 font-nepali text-lg">माग फारम (Mag Faram Format)</h2>
           </div>
           <div className="flex gap-2">
             {!isViewOnly && (
                 <button onClick={handleAddItem} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors">
-                    <Plus size={18} /> थप्नुहोस्
+                    <Plus size={18} /> थप्नुहोस् (Add)
                 </button>
             )}
             {!isViewOnly && (
-                <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-colors">
+                <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-all">
                     <Save size={18} /> {editingId && editingId !== 'new' ? (isStoreKeeper ? 'प्रमाणित गर्नुहोस्' : 'स्वीकृत गर्नुहोस्') : 'सुरक्षित गर्नुहोस्'}
                 </button>
             )}
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors">
-                <Printer size={18} /> प्रिन्ट
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg transition-colors font-medium">
+                <Printer size={18} /> प्रिन्ट (Print)
             </button>
           </div>
        </div>
@@ -264,7 +259,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
               {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
               {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
               {generalSettings.subTitleNepali3 && <h3 className="text-lg font-bold">{generalSettings.subTitleNepali3}</h3>}
-              <h2 className="text-lg font-bold underline underline-offset-4 pt-2">माग फारम</h2>
+              <h2 className="text-lg font-bold underline underline-offset-4 pt-4">माग फारम</h2>
           </div>
 
           <div className="flex justify-between items-end mb-6">
@@ -279,14 +274,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     hideIcon={true}
                     inputClassName="border-b border-dotted border-slate-800 w-32 text-center outline-none bg-transparent font-bold placeholder:text-slate-400 placeholder:font-normal rounded-none px-0 py-0 h-auto focus:ring-0 focus:border-slate-800"
                     wrapperClassName="w-32"
-                    disabled={isViewOnly || (editingId && editingId !== 'new' && !isRegularUser)}
+                    disabled={isViewOnly || (editingId && editingId !== 'new' && !isAdminOrApproval && !isStoreKeeper)}
                   />
               </div>
           </div>
 
           <table className="w-full border-collapse border border-slate-900 text-center">
               <thead>
-                  <tr className="bg-slate-50">
+                  <tr className="bg-slate-50 font-bold">
                       <th className="border border-slate-900 p-2 w-12">क्र.सं.</th>
                       <th className="border border-slate-900 p-2">सामानको नाम</th>
                       <th className="border border-slate-900 p-2 w-20">एकाई</th>
@@ -305,55 +300,65 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                     value={item.name} 
                                     onChange={val => updateItem(item.id, 'name', val)} 
                                     onSelect={opt => updateItem(item.id, 'unit', opt.itemData.unit)} 
-                                    className="!border-none !bg-transparent !p-1"
+                                    className="!border-none !bg-transparent !p-2"
                                     placeholder="सामान खोज्नुहोस्..."
                                 />
                               ) : (
-                                <span className="px-2">{item.name}</span>
+                                <span className="px-2 block py-2">{item.name}</span>
                               )}
                           </td>
                           <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full text-center bg-transparent outline-none" />
+                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full text-center bg-transparent outline-none py-1" />
                           </td>
                           <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center font-bold bg-transparent outline-none" placeholder="०" />
+                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center font-bold bg-transparent outline-none py-1" placeholder="०" />
                           </td>
                           <td className="border border-slate-900 p-1">
-                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left px-1 bg-transparent outline-none" />
+                              <input disabled={isViewOnly || (editingId && editingId !== 'new')} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left px-2 bg-transparent outline-none py-1" />
                           </td>
+                      </tr>
+                  ))}
+                  {/* Fill empty rows to make it look like a real form */}
+                  {items.length < 5 && [...Array(5 - items.length)].map((_, i) => (
+                      <tr key={`empty-${i}`} className="h-10">
+                          <td className="border border-slate-900"></td>
+                          <td className="border border-slate-900"></td>
+                          <td className="border border-slate-900"></td>
+                          <td className="border border-slate-900"></td>
+                          <td className="border border-slate-900"></td>
                       </tr>
                   ))}
               </tbody>
           </table>
 
-          <div className="grid grid-cols-3 gap-8 mt-12 text-sm">
+          <div className="grid grid-cols-3 gap-8 mt-16 text-sm">
               <div>
-                  <div className="font-bold mb-8">माग गर्नेको दस्तखत:</div>
+                  <div className="font-bold mb-10">माग गर्नेको दस्तखत:</div>
                   <div className="border-t border-slate-400 pt-1">
                     <div>नाम: {formDetails.demandBy?.name}</div>
                     <div>पद: {formDetails.demandBy?.designation}</div>
                   </div>
               </div>
               <div>
-                  <div className="font-bold mb-8">सिफारिस गर्ने/प्रमाणित:</div>
+                  <div className="font-bold mb-10">सिफारिस गर्ने/प्रमाणित:</div>
                   <div className="border-t border-slate-400 pt-1">
-                    {formDetails.status === 'Verified' || formDetails.status === 'Approved' ? (
+                    {(formDetails.status === 'Verified' || formDetails.status === 'Approved') ? (
                         <div>
                             <div>नाम: {formDetails.storeKeeper?.name}</div>
-                            <div className="text-xs italic text-slate-500">(स्टोरकिपर)</div>
+                            <div className="text-xs italic text-slate-500">(जिन्सी शाखा प्रमुख)</div>
                         </div>
-                    ) : '....................'}
+                    ) : <div className="text-slate-300 italic">....................</div>}
                   </div>
               </div>
               <div>
-                  <div className="font-bold mb-8">स्वीकृत गर्नेको दस्तखत:</div>
+                  <div className="font-bold mb-10">स्वीकृत गर्नेको दस्तखत:</div>
                   <div className="border-t border-slate-400 pt-1">
                     {formDetails.status === 'Approved' ? (
                         <div>
                             <div>नाम: {formDetails.approvedBy?.name}</div>
                             <div>पद: {formDetails.approvedBy?.designation}</div>
                         </div>
-                    ) : '....................'}
+                    ) : <div className="text-slate-300 italic">....................</div>}
                   </div>
               </div>
           </div>
