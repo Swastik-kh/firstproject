@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Calendar, User, Lock, LogIn, Eye, EyeOff, Loader2, AlertCircle, Info } from 'lucide-react';
+import { Calendar, User, Lock, LogIn, Eye, EyeOff, Loader2, AlertCircle, Info, Code } from 'lucide-react';
 import { Input } from './Input';
 import { Select } from './Select';
 import { FISCAL_YEARS } from '../constants';
@@ -173,10 +173,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({ users, onLoginSuccess, ini
           )}
         </button>
 
-        <div className="text-center pt-2">
+        <div className="text-center pt-2 space-y-2">
             <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">
                 Smart Inventory Management System
             </p>
+            <div className="flex items-center justify-center gap-1.5 text-slate-400">
+                <Code size={12} />
+                <p className="text-[11px] font-medium italic">
+                    Developed by: swastik khatiwada
+                </p>
+            </div>
         </div>
       </div>
     </form>

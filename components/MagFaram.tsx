@@ -262,6 +262,9 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     });
   };
 
+  const inputReadOnlyClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-slate-50 text-slate-400 cursor-not-allowed px-1 rounded-sm transition-colors";
+  const inputEditableClass = "border-b border-dotted border-slate-800 flex-1 outline-none bg-white focus:bg-primary-50 px-1 rounded-sm transition-colors";
+
   if (!editingId) {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
@@ -444,14 +447,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                     onSelect={opt => handleItemSelect(item.id, opt)} 
                                     className="!border-none !bg-transparent !p-1 !text-xs" placeholder="सामान छान्नुहोस्..."
                                 />
-                              ) : <span className="px-2">{item.name}</span>}
+                              ) : <span className="px-2 font-medium">{item.name}</span>}
                           </td>
                           <td className="border border-slate-800 p-1">
                               <input 
                                 disabled={isViewOnly || !isNewForm || item.isFromInventory} 
                                 value={item.specification} 
                                 onChange={e => updateItem(item.id, 'specification', e.target.value)} 
-                                className={`w-full text-left outline-none bg-transparent px-1 ${item.isFromInventory ? 'text-slate-500 cursor-not-allowed' : ''}`} 
+                                className={`w-full text-left outline-none bg-transparent px-1 ${item.isFromInventory ? 'text-slate-400 cursor-not-allowed italic' : ''}`} 
                               />
                           </td>
                           <td className="border border-slate-800 p-1">
@@ -459,7 +462,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                                 disabled={isViewOnly || !isNewForm || item.isFromInventory} 
                                 value={item.unit} 
                                 onChange={e => updateItem(item.id, 'unit', e.target.value)} 
-                                className={`w-full text-center outline-none bg-transparent ${item.isFromInventory ? 'text-slate-500 font-bold cursor-not-allowed' : ''}`} 
+                                className={`w-full text-center outline-none bg-transparent ${item.isFromInventory ? 'text-slate-400 font-bold cursor-not-allowed italic' : ''}`} 
                               />
                           </td>
                           <td className="border border-slate-800 p-1 font-bold">
@@ -470,18 +473,24 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                           </td>
                           <td className="border border-slate-800 p-1 no-print">
                               {!isViewOnly && isNewForm && (
-                                <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 p-1 flex items-center justify-center w-full">
+                                <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 p-1 flex items-center justify-center w-full transition-colors">
                                     <Trash2 size={14} />
                                 </button>
                               )}
                           </td>
                       </tr>
                   ))}
+                  {/* Empty rows to maintain table height during print if needed */}
+                  {isViewOnly && items.length < 5 && Array.from({ length: 5 - items.length }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="min-h-[30px] h-[30px]">
+                          <td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1"></td><td className="border border-slate-800 p-1 no-print"></td>
+                      </tr>
+                  ))}
               </tbody>
           </table>
 
           {isNewForm && items.length < 14 && (
-            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200">
+            <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200 hover:bg-primary-100 transition-all">
                 <Plus size={12} /> थप्नुहोस् (Add Row)
             </button>
           )}
@@ -496,19 +505,19 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">माग गर्नेको:</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
-                      <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isNewForm}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} className={inputReadOnlyClass} disabled={true}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} className={inputReadOnlyClass} disabled={true}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} className={inputReadOnlyClass} disabled={true}/></div>
+                      <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className={isViewOnly || !isNewForm ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isNewForm}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 px-4">
                   <div className="font-bold mb-4">सिफारिस गर्ने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.recommendedBy?.name} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.recommendedBy?.designation} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.recommendedBy?.date} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.recommendedBy?.name} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, name: e.target.value}})} className={isViewOnly || isNewForm || !isAdminOrApproval ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.recommendedBy?.designation} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, designation: e.target.value}})} className={isViewOnly || isNewForm || !isAdminOrApproval ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.recommendedBy?.date} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, date: e.target.value}})} className={isViewOnly || isNewForm || !isAdminOrApproval ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
                   </div>
               </div>
 
@@ -516,44 +525,44 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                   <div className="font-bold mb-2">स्टोरकिपरले भर्ने:</div>
                   <div className="space-y-1 mb-4">
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
-                        <span className={!isVerifying ? 'text-slate-400' : ''}>क) बजारबाट खरिद गर्नु पर्ने</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800 transition-transform active:scale-90`}>{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14} className="text-slate-300"/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : 'font-medium'}>क) बजारबाट खरिद गर्नु पर्ने</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
-                        <span className={!isVerifying ? 'text-slate-400' : ''}>ख) मौज्दातमा रहेको</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800 transition-transform active:scale-90`}>{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14} className="text-primary-600"/> : <Square size={14} className="text-slate-300"/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : 'font-medium'}>ख) मौज्दातमा रहेको</span>
                       </div>
                   </div>
                   <div className="space-y-1">
                       <div className="mb-2">स्टोरकिपरको दस्तखत:.......</div>
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.storeKeeper?.name} onChange={e => setFormDetails({...formDetails, storeKeeper: {...formDetails.storeKeeper!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.storeKeeper?.name} onChange={e => setFormDetails({...formDetails, storeKeeper: {...formDetails.storeKeeper!, name: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">मालसामान बुझिलिनेको:</div>
                   <div className="space-y-1">
-                      <div className="flex gap-2"><span>नाम:</span><input value={formDetails.receiver?.name} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.receiver?.designation} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.receiver?.date} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-2"><span>नाम:</span><input value={formDetails.receiver?.name} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, name: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.receiver?.designation} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, designation: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.receiver?.date} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, date: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 px-4">
                   <div className="font-bold mb-4">खर्च निकासा खातामा चढाउने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.ledgerEntry?.name} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.ledgerEntry?.designation} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.ledgerEntry?.date} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.ledgerEntry?.name} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, name: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.ledgerEntry?.designation} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, designation: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.ledgerEntry?.date} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, date: e.target.value}})} className={isViewOnly || !isVerifying ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 pl-4">
                   <div className="font-bold mb-4">स्वीकृत गर्ने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.approvedBy?.name} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.approvedBy?.designation} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.approvedBy?.date} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.approvedBy?.name} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, name: e.target.value}})} className={isViewOnly || !isApproving ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isApproving}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.approvedBy?.designation} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, designation: e.target.value}})} className={isViewOnly || !isApproving ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isApproving}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.approvedBy?.date} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, date: e.target.value}})} className={isViewOnly || !isApproving ? inputReadOnlyClass : inputEditableClass} disabled={isViewOnly || !isApproving}/></div>
                   </div>
               </div>
           </div>
