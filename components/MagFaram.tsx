@@ -7,6 +7,11 @@ import { NepaliDatePicker } from './NepaliDatePicker';
 // @ts-ignore
 import NepaliDate from 'nepali-date-converter';
 
+// Extended local interface to track if item was picked from inventory
+interface LocalMagItem extends MagItem {
+  isFromInventory?: boolean;
+}
+
 interface MagFaramProps {
   currentFiscalYear: string;
   currentUser: User;
@@ -48,7 +53,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     }
   }, []);
 
-  const [items, setItems] = useState<MagItem[]>([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
+  const [items, setItems] = useState<LocalMagItem[]>([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
   
   const [formDetails, setFormDetails] = useState<MagFormEntry>({
     id: '',
@@ -77,6 +82,11 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const isStoreKeeper = currentUser.role === 'STOREKEEPER' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
   const isAdminOrApproval = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
 
+  // Workflow context helpers
+  const isNewForm = !editingId || editingId === 'new';
+  const isVerifying = !isViewOnly && !isNewForm && isStoreKeeper && formDetails.status === 'Pending';
+  const isApproving = !isViewOnly && !isNewForm && isAdminOrApproval && formDetails.status === 'Verified';
+
   const actionableForms = useMemo(() => {
       if (isStoreKeeper) return existingForms.filter(f => f.status === 'Pending').sort((a, b) => b.id.localeCompare(a.id));
       if (isAdminOrApproval) return existingForms.filter(f => f.status === 'Verified').sort((a, b) => b.id.localeCompare(a.id));
@@ -100,11 +110,35 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     };
   }), [inventoryItems]);
 
-  const handleAddItem = () => setItems([...items, { id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
-  const handleRemoveItem = (id: number) => items.length > 1 && setItems(items.filter(i => i.id !== id));
+  const handleAddItem = () => {
+    if (items.length < 14) {
+      setItems([...items, { id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
+    } else {
+      alert("अधिकतम १४ वटा सामान मात्र माग गर्न सकिन्छ। (Maximum 14 items can be requested)");
+    }
+  };
+
+  const handleRemoveItem = (id: number) => {
+    if (items.length > 1) {
+      setItems(items.filter(i => i.id !== id));
+    } else {
+      // If last item, just clear it instead of removing
+      setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
+    }
+  };
   
-  const updateItem = useCallback((id: number, field: keyof MagItem, value: any) => {
-    setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, [field]: value } : item));
+  const updateItem = useCallback((id: number, field: keyof LocalMagItem, value: any) => {
+    setItems(prevItems => prevItems.map(item => {
+        if (item.id === id) {
+            const updated = { ...item, [field]: value };
+            // If user types manually in the name field, treat it as NOT from inventory
+            if (field === 'name') {
+                updated.isFromInventory = false;
+            }
+            return updated;
+        }
+        return item;
+    }));
   }, []);
 
   const handleItemSelect = (id: number, option: Option) => {
@@ -117,7 +151,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                     name: invItem.itemName,
                     unit: invItem.unit,
                     specification: invItem.specification || item.specification,
-                    // Keeping quantity and remarks as is
+                    isFromInventory: true // Flag as selected from dropdown
                 };
             }
             return item;
@@ -126,17 +160,21 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   };
 
   const updateStoreKeeperStatus = (status: string) => {
-      if (isViewOnly) return;
+      if (isViewOnly || !isVerifying) return; // Only during verification can SK change this
       setFormDetails(prev => ({
           ...prev,
-          storeKeeper: { ...prev.storeKeeper, status, name: prev.storeKeeper?.name || '' }
+          storeKeeper: { ...prev.storeKeeper, status, name: prev.storeKeeper?.name || currentUser.fullName }
       }));
   };
 
   const handleLoadForm = (form: MagFormEntry, viewOnly: boolean = false) => {
       setEditingId(form.id);
       setIsViewOnly(viewOnly);
-      setItems(form.items);
+      // When loading, items that have matches in inventory are treated as "from inventory" for safety
+      setItems(form.items.map(item => {
+          const matched = inventoryItems.some(i => i.itemName === item.name);
+          return { ...item, isFromInventory: matched };
+      }));
       setFormDetails({ ...form });
       setValidationError(null);
   };
@@ -144,7 +182,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const handleSave = () => {
     setValidationError(null);
 
-    // Validation
     if (!formDetails.date || formDetails.date.trim() === '') {
         setValidationError("कृपया मिति भर्नुहोस्। (Please fill the date)");
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -157,7 +194,6 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         return;
     }
 
-    // Validate Items
     if (items.length === 0) {
         setValidationError("कृपया कम्तिमा एउटा सामान थप्नुहोस्। (Please add at least one item)");
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -191,10 +227,13 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         else if (isAdminOrApproval && formDetails.status === 'Verified') nextStatus = 'Approved';
     }
 
+    // Strip internal flags before saving
+    const itemsToSave = items.map(({ isFromInventory, ...rest }) => rest);
+
     const newForm: MagFormEntry = {
         ...formDetails,
         id: editingId === 'new' || !editingId ? Date.now().toString() : editingId,
-        items,
+        items: itemsToSave,
         status: nextStatus
     };
     onSave(newForm);
@@ -206,7 +245,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setEditingId(null);
     setIsViewOnly(false);
     setValidationError(null);
-    setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '' }]);
+    setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     setFormDetails({
         id: '', 
         items: [], 
@@ -237,7 +276,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             </div>
 
             {actionableForms.length > 0 && (
-                <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
+                <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden mb-6">
                     <div className="bg-orange-50 px-6 py-3 border-b border-orange-100 flex justify-between items-center text-orange-800">
                         <h3 className="font-bold font-nepali flex items-center gap-2"><Clock size={18} /> कारबाहीको लागि बाँकी</h3>
                         <span className="bg-orange-200 text-xs font-bold px-2 py-0.5 rounded-full">{actionableForms.length}</span>
@@ -248,7 +287,14 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {actionableForms.map(f => (
-                                <tr key={f.id} className="hover:bg-slate-50"><td className="px-6 py-3 font-mono font-bold">#{f.formNo}</td><td className="px-6 py-3 font-medium">{f.demandBy?.name}</td><td className="px-6 py-3 font-nepali">{f.date}</td><td className="px-6 py-3 text-right"><button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline bg-primary-50 px-3 py-1.5 rounded-lg">Verify/Approve</button></td></tr>
+                                <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 font-mono font-medium text-slate-700">#{f.formNo}</td>
+                                    <td className="px-6 py-4">{f.demandBy?.name}</td>
+                                    <td className="px-6 py-4 font-nepali">{f.date}</td>
+                                    <td className="px-6 py-4 text-right">
+                                        <button onClick={() => handleLoadForm(f)} className="text-primary-600 font-bold hover:underline bg-primary-50 px-3 py-1.5 rounded-lg">Verify/Approve</button>
+                                    </td>
+                                </tr>
                             ))}
                         </tbody>
                     </table>
@@ -311,7 +357,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           
           <div className="mb-6">
               <div className="flex items-start justify-between">
-                  <div className="w-20 pt-1">
+                  <div className="w-24 pt-2 flex justify-start">
                       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" alt="Nepal Emblem" className="h-20 w-20 object-contain" />
                   </div>
                   <div className="flex-1 text-center">
@@ -320,7 +366,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                       <h3 className="text-sm font-bold">स्वास्थ्य शाखा</h3>
                       <h3 className="text-base font-bold">आधारभूत नगर अस्पताल बेल्टार</h3>
                   </div>
-                  <div className="w-20"></div> 
+                  <div className="w-24"></div> 
               </div>
               <div className="text-center mt-6">
                   <h2 className="text-lg font-bold underline underline-offset-4">माग फारम</h2>
@@ -347,7 +393,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                             label=""
                             hideIcon={true}
                             inputClassName="!border-none !bg-transparent !p-0 !text-right !font-bold !h-auto !shadow-none !ring-0 border-b border-dotted border-slate-800 rounded-none w-full"
-                            disabled={isViewOnly}
+                            disabled={isViewOnly || !isNewForm}
                             popupAlign="right"
                             minDate={todayBS}
                             maxDate={todayBS}
@@ -365,6 +411,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                       <th className="border border-slate-800 p-2 w-32">स्पेसिफिकेशन</th>
                       <th className="border border-slate-800 p-1 w-32" colSpan={2}>माग गरिएको</th>
                       <th className="border border-slate-800 p-2 w-24">कैफियत</th>
+                      <th className="border border-slate-800 p-2 w-10 no-print"></th>
                   </tr>
                   <tr>
                       <th className="border border-slate-800 p-1"></th>
@@ -373,6 +420,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                       <th className="border border-slate-800 p-1">एकाई</th>
                       <th className="border border-slate-800 p-1">परिमाण</th>
                       <th className="border border-slate-800 p-1"></th>
+                      <th className="border border-slate-800 p-1 no-print"></th>
                   </tr>
                   <tr className="bg-slate-100 text-[10px]">
                       <th className="border border-slate-800 p-0.5">१</th>
@@ -381,6 +429,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                       <th className="border border-slate-800 p-0.5">४</th>
                       <th className="border border-slate-800 p-0.5">५</th>
                       <th className="border border-slate-800 p-0.5">६</th>
+                      <th className="border border-slate-800 p-0.5 no-print"></th>
                   </tr>
               </thead>
               <tbody>
@@ -388,7 +437,7 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                       <tr key={item.id} className="min-h-[30px]">
                           <td className="border border-slate-800 p-1">{idx + 1}</td>
                           <td className="border border-slate-800 p-0 text-left">
-                              {!isViewOnly ? (
+                              {!isViewOnly && isNewForm ? (
                                 <SearchableSelect 
                                     options={itemOptions} value={item.name} 
                                     onChange={val => updateItem(item.id, 'name', val)} 
@@ -398,45 +447,68 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                               ) : <span className="px-2">{item.name}</span>}
                           </td>
                           <td className="border border-slate-800 p-1">
-                              <input disabled={isViewOnly} value={item.specification} onChange={e => updateItem(item.id, 'specification', e.target.value)} className="w-full text-left outline-none bg-transparent px-1" />
+                              <input 
+                                disabled={isViewOnly || !isNewForm || item.isFromInventory} 
+                                value={item.specification} 
+                                onChange={e => updateItem(item.id, 'specification', e.target.value)} 
+                                className={`w-full text-left outline-none bg-transparent px-1 ${item.isFromInventory ? 'text-slate-500 cursor-not-allowed' : ''}`} 
+                              />
                           </td>
                           <td className="border border-slate-800 p-1">
-                              <input disabled={isViewOnly} value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full text-center outline-none bg-transparent" />
+                              <input 
+                                disabled={isViewOnly || !isNewForm || item.isFromInventory} 
+                                value={item.unit} 
+                                onChange={e => updateItem(item.id, 'unit', e.target.value)} 
+                                className={`w-full text-center outline-none bg-transparent ${item.isFromInventory ? 'text-slate-500 font-bold cursor-not-allowed' : ''}`} 
+                              />
                           </td>
                           <td className="border border-slate-800 p-1 font-bold">
-                              <input disabled={isViewOnly} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center outline-none bg-transparent" />
+                              <input disabled={isViewOnly || !isNewForm} value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} className="w-full text-center outline-none bg-transparent" />
                           </td>
                           <td className="border border-slate-800 p-1">
-                              <input disabled={isViewOnly} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left outline-none bg-transparent px-1" />
+                              <input disabled={isViewOnly || !isNewForm} value={item.remarks} onChange={e => updateItem(item.id, 'remarks', e.target.value)} className="w-full text-left outline-none bg-transparent px-1" />
+                          </td>
+                          <td className="border border-slate-800 p-1 no-print">
+                              {!isViewOnly && isNewForm && (
+                                <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-700 p-1 flex items-center justify-center w-full">
+                                    <Trash2 size={14} />
+                                </button>
+                              )}
                           </td>
                       </tr>
                   ))}
               </tbody>
           </table>
 
-          {!isViewOnly && (
+          {isNewForm && items.length < 14 && (
             <button onClick={handleAddItem} className="mt-2 no-print flex items-center gap-1 text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-1 rounded border border-dashed border-primary-200">
-                <Plus size={12} /> थप्नुहोस्
+                <Plus size={12} /> थप्नुहोस् (Add Row)
             </button>
+          )}
+
+          {isNewForm && items.length >= 14 && (
+            <div className="mt-2 no-print text-[10px] text-orange-600 font-bold italic">
+                * अधिकतम १४ वटा लहर मात्र थप्न सकिन्छ।
+            </div>
           )}
 
           <div className="mt-8 text-[11px] grid grid-cols-12 gap-y-10">
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">माग गर्नेको:</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.demandBy?.name} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.demandBy?.designation} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.demandBy?.date} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent text-slate-500 cursor-not-allowed" disabled={true}/></div>
+                      <div className="flex gap-1"><span>प्रयोजन:</span><input value={formDetails.demandBy?.purpose} onChange={e => setFormDetails({...formDetails, demandBy: {...formDetails.demandBy!, purpose: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isNewForm}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 px-4">
                   <div className="font-bold mb-4">सिफारिस गर्ने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.recommendedBy?.name} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.recommendedBy?.designation} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.recommendedBy?.date} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.recommendedBy?.name} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.recommendedBy?.designation} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.recommendedBy?.date} onChange={e => setFormDetails({...formDetails, recommendedBy: {...formDetails.recommendedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || isNewForm || !isAdminOrApproval}/></div>
                   </div>
               </div>
 
@@ -444,44 +516,44 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                   <div className="font-bold mb-2">स्टोरकिपरले भर्ने:</div>
                   <div className="space-y-1 mb-4">
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className="text-slate-800">{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
-                        <span>क) बजारबाट खरिद गर्नु पर्ने</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('market')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'market' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : ''}>क) बजारबाट खरिद गर्नु पर्ने</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className="text-slate-800">{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
-                        <span>ख) मौज्दातमा रहेको</span>
+                        <button type="button" onClick={() => updateStoreKeeperStatus('stock')} className={`${!isVerifying ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} text-slate-800`}>{formDetails.storeKeeper?.status === 'stock' ? <CheckCircle2 size={14}/> : <Square size={14}/>}</button>
+                        <span className={!isVerifying ? 'text-slate-400' : ''}>ख) मौज्दातमा रहेको</span>
                       </div>
                   </div>
                   <div className="space-y-1">
                       <div className="mb-2">स्टोरकिपरको दस्तखत:.......</div>
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.storeKeeper?.name} onChange={e => setFormDetails({...formDetails, storeKeeper: {...formDetails.storeKeeper!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.storeKeeper?.name} onChange={e => setFormDetails({...formDetails, storeKeeper: {...formDetails.storeKeeper!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">मालसामान बुझिलिनेको:</div>
                   <div className="space-y-1">
-                      <div className="flex gap-2"><span>नाम:</span><input value={formDetails.receiver?.name} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.receiver?.designation} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.receiver?.date} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-2"><span>नाम:</span><input value={formDetails.receiver?.name} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.receiver?.designation} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.receiver?.date} onChange={e => setFormDetails({...formDetails, receiver: {...formDetails.receiver!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 px-4">
                   <div className="font-bold mb-4">खर्च निकासा खातामा चढाउने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.ledgerEntry?.name} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.ledgerEntry?.designation} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.ledgerEntry?.date} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.ledgerEntry?.name} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.ledgerEntry?.designation} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.ledgerEntry?.date} onChange={e => setFormDetails({...formDetails, ledgerEntry: {...formDetails.ledgerEntry!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isVerifying}/></div>
                   </div>
               </div>
 
               <div className="col-span-4 pl-4">
                   <div className="font-bold mb-4">स्वीकृत गर्ने:.......</div>
                   <div className="space-y-1">
-                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.approvedBy?.name} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
-                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.approvedBy?.designation} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
-                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.approvedBy?.date} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={!isAdminOrApproval || isViewOnly}/></div>
+                      <div className="flex gap-1"><span>नाम:</span><input value={formDetails.approvedBy?.name} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, name: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
+                      <div className="flex gap-1"><span>पद:</span><input value={formDetails.approvedBy?.designation} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, designation: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
+                      <div className="flex gap-1"><span>मिति:</span><input value={formDetails.approvedBy?.date} onChange={e => setFormDetails({...formDetails, approvedBy: {...formDetails.approvedBy!, date: e.target.value}})} className="border-b border-dotted border-slate-800 flex-1 outline-none bg-transparent" disabled={isViewOnly || !isApproving}/></div>
                   </div>
               </div>
           </div>
