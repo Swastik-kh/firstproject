@@ -60,9 +60,9 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
     recommendedBy: { name: '', designation: '', date: '' },
     storeKeeper: { status: 'stock', name: '' },
-    receiver: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS },
+    receiver: { name: '', designation: '', date: '' }, // Changed: Empty date by default
     ledgerEntry: { name: '', date: '' },
-    approvedBy: { name: '', designation: '', date: todayBS }
+    approvedBy: { name: '', designation: '', date: '' } // Changed: Empty date by default
   });
 
   useEffect(() => {
@@ -148,9 +148,9 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         demandBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS, purpose: '' },
         recommendedBy: { name: '', designation: '', date: '' },
         storeKeeper: { status: 'stock', name: '' },
-        receiver: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS },
+        receiver: { name: '', designation: '', date: '' }, // Changed: Empty on reset
         ledgerEntry: { name: '', date: '' },
-        approvedBy: { name: '', designation: '', date: todayBS }
+        approvedBy: { name: '', designation: '', date: '' } // Changed: Empty on reset
     });
   };
 
