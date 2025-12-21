@@ -314,6 +314,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'tb_leprosy':
         return <TBPatientRegistration currentFiscalYear={currentFiscalYear} />;
       case 'rabies':
+        /* Fixed: Changed onUpdatePatient to use onUpdateRabiesPatient which is destructured from props */
         return <RabiesRegistration currentFiscalYear={currentFiscalYear} patients={rabiesPatients} onAddPatient={onAddRabiesPatient} onUpdatePatient={onUpdateRabiesPatient} onDeletePatient={onDeletePatient} currentUser={currentUser} />;
       case 'report_rabies':
         return <RabiesReport currentFiscalYear={currentFiscalYear} currentUser={currentUser} patients={rabiesPatients} />;
@@ -365,29 +366,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <Activity size={20} className="text-white" />
             </div>
             <div className={`transition-opacity duration-300 ${isSidebarOpen || (window.innerWidth < 768) ? 'opacity-100' : 'opacity-0 md:opacity-100'}`}>
-                <h2 className="font-nepali font-bold text-lg leading-tight tracking-wide whitespace-nowrap">{APP_NAME}</h2>
-                <p className="text-xs text-slate-400 font-nepali whitespace-nowrap">{currentUser.organizationName || ORG_NAME}</p>
+                <h2 className="font-nepali font-bold text-lg leading-tight tracking-wide">{APP_NAME}</h2>
+                <p className="text-xs text-slate-400 font-nepali">{currentUser.organizationName || ORG_NAME}</p>
             </div>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
              {menuItems.map((item) => (
                <div key={item.id}>
-                  <button onClick={() => handleMenuClick(item)} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group ${activeItem === item.id ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/20' : (expandedMenu === item.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800')}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`${activeItem === item.id ? 'text-white' : 'group-hover:text-primary-400'} transition-colors`}>{item.icon}</div>
-                      <span className="font-medium font-nepali whitespace-nowrap">{item.label}</span>
+                  <button onClick={() => handleMenuClick(item)} className={`w-full flex items-start justify-between px-4 py-3 rounded-xl transition-all duration-200 group ${activeItem === item.id ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/20' : (expandedMenu === item.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800')}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 ${activeItem === item.id ? 'text-white' : 'group-hover:text-primary-400'} transition-colors`}>{item.icon}</div>
+                      <span className="font-medium font-nepali text-left leading-snug">{item.label}</span>
                     </div>
                     {item.subItems && (
-                      <div className="text-slate-500">{expandedMenu === item.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</div>
+                      <div className="text-slate-500 mt-1">{expandedMenu === item.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</div>
                     )}
                   </button>
                   {item.subItems && expandedMenu === item.id && (
                     <div className="mt-1 ml-4 pl-3 border-l border-slate-700 space-y-1">
                       {item.subItems.map((subItem) => (
                         <div key={subItem.id}>
-                            <button onClick={() => subItem.subItems ? handleLevel3Click(subItem.id) : handleSubItemClick(subItem.id)} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm transition-colors ${activeItem === subItem.id ? 'bg-slate-800 text-primary-300 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>
-                                <div className="flex items-center gap-2">{subItem.icon}<span className="font-nepali whitespace-nowrap">{subItem.label}</span></div>
-                                <div className="flex items-center gap-2">
+                            <button onClick={() => subItem.subItems ? handleLevel3Click(subItem.id) : handleSubItemClick(subItem.id)} className={`w-full flex items-start justify-between px-4 py-2.5 rounded-lg text-sm transition-colors ${activeItem === subItem.id ? 'bg-slate-800 text-primary-300 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>
+                                <div className="flex items-start gap-2">
+                                    <div className="mt-0.5">{subItem.icon}</div>
+                                    <span className="font-nepali text-left leading-normal">{subItem.label}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
                                     {subItem.badgeCount !== undefined && subItem.badgeCount > 0 && (<span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">{subItem.badgeCount}</span>)}
                                     {subItem.subItems && (expandedSubMenu === subItem.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                                 </div>
@@ -395,8 +399,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {subItem.subItems && expandedSubMenu === subItem.id && (
                                 <div className="mt-1 ml-4 pl-3 border-l border-slate-700 space-y-1">
                                     {subItem.subItems.map(level3Item => (
-                                        <button key={level3Item.id} onClick={() => handleSubItemClick(level3Item.id)} className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${activeItem === level3Item.id ? 'bg-slate-800 text-primary-300 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>
-                                            {level3Item.icon}<span className="font-nepali whitespace-nowrap">{level3Item.label}</span>
+                                        <button key={level3Item.id} onClick={() => handleSubItemClick(level3Item.id)} className={`w-full flex items-start gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${activeItem === level3Item.id ? 'bg-slate-800 text-primary-300 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>
+                                            <div className="mt-0.5">{level3Item.icon}</div>
+                                            <span className="font-nepali text-left leading-normal">{level3Item.label}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -411,7 +416,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
             <button onClick={onLogout} className="flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 w-full rounded-xl transition-all duration-200 group">
                 <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" />
-                <span className="font-medium whitespace-nowrap">लगआउट (Logout)</span>
+                <span className="font-medium">लगआउट (Logout)</span>
             </button>
         </div>
       </aside>

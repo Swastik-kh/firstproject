@@ -28,6 +28,10 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   
+  // Rejection States
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
   // Verification Popup States
   const [showVerifyPopup, setShowVerifyPopup] = useState(false);
   const [verificationData, setVerificationData] = useState({
@@ -229,6 +233,26 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     finalizeSave();
   };
 
+  const handleReject = () => {
+      if (!rejectReason.trim()) {
+          alert("कृपया अस्वीकार गर्नुको कारण खुलाउनुहोस्।");
+          return;
+      }
+      
+      const newForm: MagFormEntry = {
+          ...formDetails,
+          status: 'Rejected',
+          rejectionReason: rejectReason,
+          isViewedByRequester: false, // Notify requester
+          approvedBy: { name: currentUser.fullName, designation: currentUser.designation, date: todayBS }
+      };
+      
+      onSave(newForm);
+      alert("माग फारम अस्वीकृत गरियो।");
+      setShowRejectModal(false);
+      handleReset();
+  };
+
   const finalizeSave = (extraData?: { storeId: string, itemType: 'Expendable' | 'Non-Expendable' }) => {
     let nextStatus = formDetails.status || 'Pending';
     let nextIsViewed = true;
@@ -257,7 +281,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
         items: itemsToSave,
         status: nextStatus,
         isViewedByRequester: nextIsViewed,
-        storeKeeper: updatedStoreKeeper
+        storeKeeper: updatedStoreKeeper,
+        rejectionReason: "" // Clear reason if successfully saved as non-rejected
     };
 
     const finalStoreId = extraData?.storeId || formDetails.selectedStoreId || '';
@@ -277,6 +302,8 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
     setIsViewOnly(false);
     setValidationError(null);
     setShowVerifyPopup(false);
+    setShowRejectModal(false);
+    setRejectReason('');
     setVerificationData({ storeId: '', itemType: '' });
     setItems([{ id: Date.now(), name: '', specification: '', unit: '', quantity: '', remarks: '', isFromInventory: false }]);
     setFormDetails({
@@ -397,9 +424,16 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
           </div>
           <div className="flex gap-2">
             {!isViewOnly && (
-                <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">
-                    <Save size={18} /> {isVerifying ? 'प्रमाणित गर्नुहोस्' : isApproving ? 'स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
-                </button>
+                <>
+                    {(isVerifying || isApproving) && (
+                        <button onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-medium border border-red-200">
+                           <X size={18} /> अस्वीकार (Reject)
+                        </button>
+                    )}
+                    <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">
+                        <Save size={18} /> {isVerifying ? 'प्रमाणित गर्नुहोस्' : isApproving ? 'स्वीकृत गर्नुहोस्' : 'सुरक्षित गर्नुहोस्'}
+                    </button>
+                </>
             )}
             <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
                 <Printer size={18} /> प्रिन्ट गर्नुहोस्
@@ -416,6 +450,18 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
                 </div>
                 <button onClick={() => setValidationError(null)} className="text-red-400 hover:text-red-600"><X size={20} /></button>
             </div>
+       )}
+
+       {formDetails.status === 'Rejected' && formDetails.rejectionReason && (
+           <div className="bg-red-600 text-white p-4 rounded-xl shadow-lg max-w-[210mm] mx-auto flex items-start gap-4 mb-4 no-print border-2 border-red-700">
+               <div className="bg-white/20 p-2 rounded-lg"><AlertCircle size={24}/></div>
+               <div>
+                   <h3 className="font-bold text-lg font-nepali uppercase tracking-wider">अस्वीकृत गरिएको माग (Rejected Demand)</h3>
+                   <p className="font-nepali text-sm mt-1 bg-black/10 p-2 rounded border border-white/10 italic">
+                       कारण: {formDetails.rejectionReason}
+                   </p>
+               </div>
+           </div>
        )}
 
        <div id="mag-form-print" className="bg-white p-6 md:p-10 max-w-[210mm] mx-auto min-h-[297mm] font-nepali text-slate-900 print:p-0 print:shadow-none print:w-full border shadow-lg rounded-xl">
@@ -550,6 +596,12 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
             </button>
           )}
 
+          {formDetails.status === 'Rejected' && formDetails.rejectionReason && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs italic">
+                  <strong>अस्वीकृतिको कारण:</strong> {formDetails.rejectionReason}
+              </div>
+          )}
+
           <div className="mt-8 text-[11px] grid grid-cols-12 gap-y-10">
               <div className="col-span-4 pr-4">
                   <div className="font-bold mb-4">माग गर्नेको:</div>
@@ -616,6 +668,57 @@ export const MagFaram: React.FC<MagFaramProps> = ({ currentFiscalYear, currentUs
               </div>
           </div>
        </div>
+
+       {/* REJECTION REASON MODAL */}
+       {showRejectModal && (
+           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowRejectModal(false)}></div>
+               <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                    <div className="px-6 py-4 border-b bg-red-600 text-white flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle size={20} />
+                            <h3 className="font-bold font-nepali">माग फारम अस्वीकार गर्नुहोस् (Reject Form)</h3>
+                        </div>
+                        <button onClick={() => setShowRejectModal(false)} className="p-1 hover:bg-white/20 rounded-full transition-colors"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="p-6 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-slate-700 block">
+                                अस्वीकार गर्नुको कारण (Reason for Rejection) *
+                            </label>
+                            <textarea 
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                placeholder="यहाँ कारण लेख्नुहोस्..."
+                                className="w-full rounded-xl border border-slate-300 p-4 text-sm outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 min-h-[120px] transition-all"
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-500 italic">
+                            * यो कारण माग गर्ने व्यक्तिले आफ्नो ड्यासबोर्डमा देख्न सक्नेछन्।
+                        </p>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border-t flex gap-3">
+                        <button 
+                            type="button"
+                            onClick={() => setShowRejectModal(false)}
+                            className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors"
+                        >
+                            रद्द गर्नुहोस्
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={handleReject}
+                            className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Check size={18} />
+                            अस्वीकार गर्नुहोस्
+                        </button>
+                    </div>
+               </div>
+           </div>
+       )}
 
        {/* VERIFICATION METADATA POPUP */}
        {showVerifyPopup && (

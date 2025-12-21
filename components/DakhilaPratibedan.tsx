@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
-import { Archive, Plus, Trash2, Printer, Save, CheckCircle2, ArrowLeft, Eye, X, Clock, FileText, ClipboardCheck, AlertCircle, ShieldCheck, Send, Layers, ShieldCheck as ShieldIcon, Warehouse, HelpCircle } from 'lucide-react';
-import { DakhilaPratibedanEntry, DakhilaItem, User, StockEntryRequest, OrganizationSettings, Store, InventoryItem } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Archive, Printer, ArrowLeft, Eye, X, FileText, ClipboardCheck, ShieldCheck, Warehouse, User as UserIcon, CheckCircle2, Search, Clock } from 'lucide-react';
+import { DakhilaPratibedanEntry, User, StockEntryRequest, OrganizationSettings, Store } from '../types';
 
 interface DakhilaPratibedanProps {
     dakhilaReports: DakhilaPratibedanEntry[];
@@ -28,14 +28,16 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
 }) => {
     const [selectedReport, setSelectedReport] = useState<DakhilaPratibedanEntry | null>(null);
     const [selectedRequest, setSelectedRequest] = useState<StockEntryRequest | null>(null);
-    const [activeTab, setActiveTab] = useState<'Requests' | 'History'>('Requests');
+    
+    // Default tab: Approvers see Requests, Storekeepers see History
+    const isApproverRole = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
+    const [activeTab, setActiveTab] = useState<'Requests' | 'History'>(isApproverRole ? 'Requests' : 'History');
+    
     const [showRejectModal, setShowRejectModal] = useState(false);
-    const [showApproveConfirm, setShowApproveConfirm] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
-    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'APPROVAL'].includes(currentUser.role);
-
-    // Filter ONLY Pending requests for the current fiscal year
+    // Filter Pending requests
     const pendingRequests = useMemo(() => 
         stockEntryRequests.filter(req => req.fiscalYear === currentFiscalYear && req.status === 'Pending')
             .sort((a, b) => b.id.localeCompare(a.id)),
@@ -43,9 +45,12 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
 
     // Unified History: Formal Dakhila Reports
     const filteredReports = useMemo(() => 
-        dakhilaReports.filter(r => r.fiscalYear === currentFiscalYear)
-            .sort((a, b) => b.dakhilaNo.localeCompare(a.dakhilaNo)),
-    [dakhilaReports, currentFiscalYear]);
+        dakhilaReports.filter(r => 
+            r.fiscalYear === currentFiscalYear && 
+            (r.dakhilaNo.toLowerCase().includes(searchTerm.toLowerCase()) || 
+             r.preparedBy?.name?.toLowerCase().includes(searchTerm.toLowerCase()))
+        ).sort((a, b) => b.id.localeCompare(a.id)),
+    [dakhilaReports, currentFiscalYear, searchTerm]);
 
     const handleLoadReport = (report: DakhilaPratibedanEntry) => {
         setSelectedReport(report);
@@ -57,16 +62,13 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
         setSelectedReport(null);
     };
 
-    const handleApproveClick = () => {
-        setShowApproveConfirm(true);
-    };
-
-    const confirmApproval = () => {
+    const handleApprove = () => {
         if (!selectedRequest) return;
-        onApproveStockEntry(selectedRequest.id, currentUser.fullName);
-        setShowApproveConfirm(false);
-        setSelectedRequest(null);
-        alert("अनुरोध स्वीकृत भयो र मौज्दात अपडेट गरियो। (Request approved and inventory updated.)");
+        if (window.confirm("के तपाईं यो दाखिला अनुरोध स्वीकृत गर्न चाहनुहुन्छ?")) {
+            onApproveStockEntry(selectedRequest.id, currentUser.fullName);
+            setSelectedRequest(null);
+            alert("अनुरोध स्वीकृत भयो।");
+        }
     };
 
     const handleRejectSubmit = () => {
@@ -74,12 +76,12 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
         onRejectStockEntry(selectedRequest.id, rejectionReason, currentUser.fullName);
         setShowRejectModal(false);
         setSelectedRequest(null);
-        alert("अनुरोध अस्वीकृत गरियो। (Request rejected.)");
+        alert("अनुरोध अस्वीकृत गरियो।");
     };
 
     const getStoreName = (id: string) => stores.find(s => s.id === id)?.name || 'Unknown Store';
 
-    // List View
+    // Main List View
     if (!selectedReport && !selectedRequest) {
         return (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
@@ -90,24 +92,27 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-slate-800 font-nepali">दाखिला प्रतिवेदन (Entry Report)</h2>
-                            <p className="text-sm text-slate-500">स्टक प्रविष्टि अनुरोध र स्वीकृत प्रतिवेदनहरू</p>
+                            <p className="text-sm text-slate-500 font-nepali">दाखिला अनुरोध र स्वीकृत प्रतिवेदनहरू</p>
                         </div>
                     </div>
 
                     <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <button 
-                            onClick={() => setActiveTab('Requests')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'Requests' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            <ClipboardCheck size={16} />
-                            आएका अनुरोधहरू {pendingRequests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingRequests.length}</span>}
-                        </button>
+                        {isApproverRole && (
+                            <button 
+                                onClick={() => setActiveTab('Requests')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'Requests' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <ClipboardCheck size={16} />
+                                <span className="font-nepali">अनुरोधहरू</span> 
+                                {pendingRequests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingRequests.length}</span>}
+                            </button>
+                        )}
                         <button 
                             onClick={() => setActiveTab('History')}
                             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'History' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             <FileText size={16} />
-                            दाखिला इतिहास (History)
+                            <span className="font-nepali">स्वीकृत दाखिला (History)</span>
                         </button>
                     </div>
                 </div>
@@ -118,8 +123,7 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-50 text-slate-600 font-medium">
                                     <tr>
-                                        <th className="px-6 py-4">दाखिला मिति (Date)</th>
-                                        <th className="px-6 py-4">दाखिला नं (Dakhila No)</th>
+                                        <th className="px-6 py-4">मिति (Date)</th>
                                         <th className="px-6 py-4">स्टोर (Store)</th>
                                         <th className="px-6 py-4">स्रोत (Source)</th>
                                         <th className="px-6 py-4">निवेदक (Requester)</th>
@@ -128,27 +132,26 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {pendingRequests.length === 0 ? (
-                                        <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic font-nepali">हाल कुनै नयाँ अनुरोध आएको छैन</td></tr>
+                                        <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic font-nepali">कुनै नयाँ अनुरोध छैन</td></tr>
                                     ) : (
                                         pendingRequests.map(req => (
                                             <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="px-6 py-4 font-nepali">{req.requestDateBs}</td>
-                                                <td className="px-6 py-4 font-mono font-bold text-indigo-600">{req.items[0]?.dakhilaNo || '-'}</td>
                                                 <td className="px-6 py-4 font-medium flex items-center gap-2">
                                                     <Warehouse size={14} className="text-slate-400" />
                                                     {getStoreName(req.storeId)}
                                                 </td>
                                                 <td className="px-6 py-4">{req.receiptSource}</td>
                                                 <td className="px-6 py-4">
-                                                    <div className="text-slate-700">{req.requesterName}</div>
+                                                    <div className="text-slate-700 font-medium">{req.requesterName}</div>
                                                     <div className="text-[10px] text-slate-400 uppercase font-bold">{req.requesterDesignation}</div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button 
                                                         onClick={() => handleLoadRequest(req)}
-                                                        className="bg-indigo-50 text-indigo-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
+                                                        className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm"
                                                     >
-                                                        <Eye size={14} /> विवरण हेर्नुहोस्
+                                                        Review & Approve
                                                     </button>
                                                 </td>
                                             </tr>
@@ -158,41 +161,61 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                             </table>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
-                             <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-50 text-slate-600 font-medium">
-                                    <tr>
-                                        <th className="px-6 py-4">दाखिला मिति</th>
-                                        <th className="px-6 py-4">दाखिला नं</th>
-                                        <th className="px-6 py-4">प्रकार</th>
-                                        <th className="px-6 py-4">तयार गर्ने</th>
-                                        <th className="px-6 py-4">स्वीकृत गर्ने</th>
-                                        <th className="px-6 py-4 text-right">कार्य</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {filteredReports.length === 0 ? (
-                                        <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No historical reports found.</td></tr>
-                                    ) : (
-                                        filteredReports.map(r => (
-                                            <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4 font-nepali">{r.date}</td>
-                                                <td className="px-6 py-4 font-mono font-bold text-green-600">{r.dakhilaNo}</td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded-full border border-slate-200 font-bold uppercase`}>
-                                                        {r.orderNo === 'BULK-ENTRY' ? 'Bulk' : 'Manual'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-500 text-xs">{r.preparedBy?.name}</td>
-                                                <td className="px-6 py-4 text-slate-700 font-medium">{r.approvedBy?.name}</td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button onClick={() => handleLoadReport(r)} className="text-slate-400 hover:text-indigo-600 p-2"><Eye size={18}/></button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                        <div>
+                            <div className="p-4 border-b border-slate-100 bg-slate-50/30">
+                                <div className="relative max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="दाखिला नं. वा तयार गर्नेको नाम खोज्नुहोस्..." 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:ring-4 focus:ring-indigo-500/10 outline-none text-sm transition-all"
+                                    />
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-600 font-medium">
+                                        <tr>
+                                            <th className="px-6 py-4">दाखिला मिति</th>
+                                            <th className="px-6 py-4">दाखिला नं</th>
+                                            <th className="px-6 py-4">तयार गर्ने (Storekeeper)</th>
+                                            <th className="px-6 py-4">स्वीकृत गर्ने (Head)</th>
+                                            <th className="px-6 py-4 text-right">Preview</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredReports.length === 0 ? (
+                                            <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic font-nepali">डाटा फेला परेन</td></tr>
+                                        ) : (
+                                            filteredReports.map(r => (
+                                                <tr key={r.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                    <td className="px-6 py-4 font-nepali">{r.date}</td>
+                                                    <td className="px-6 py-4 font-mono font-bold text-green-600">#{r.dakhilaNo}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="text-slate-700 font-medium">{r.preparedBy?.name}</div>
+                                                        <div className="text-[10px] text-slate-400 uppercase">{r.preparedBy?.designation}</div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="text-slate-700 font-medium">{r.approvedBy?.name}</div>
+                                                        <div className="text-[10px] text-slate-400 uppercase">{r.approvedBy?.designation}</div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <button 
+                                                            onClick={() => handleLoadReport(r)} 
+                                                            className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-full transition-all"
+                                                            title="Preview Report"
+                                                        >
+                                                            <Eye size={20}/>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -200,31 +223,20 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
         );
     }
 
-    // Detail View
-    const renderDetailView = (data: any, isRequest: boolean) => {
-        const dakhilaNo = isRequest ? (data.items[0]?.dakhilaNo || 'N/A') : data.dakhilaNo;
-        const date = isRequest ? data.requestDateBs : data.date;
+    // Report/Request Detail View
+    const renderDetailView = () => {
+        const data = selectedReport || selectedRequest;
+        if (!data) return null;
+
+        const isReq = !!selectedRequest;
+        // Fix: Explicitly narrowing the data source to resolve Property 'dakhilaNo' does not exist on type 'InventoryItem | DakhilaItem'
+        const dNo = selectedRequest 
+            ? (selectedRequest.items[0]?.dakhilaNo || 'N/A') 
+            : (selectedReport as DakhilaPratibedanEntry).dakhilaNo;
+            
+        const dDate = isReq ? (data as StockEntryRequest).requestDateBs : (data as DakhilaPratibedanEntry).date;
         const items = data.items || [];
-        const isApproved = data.status === 'Approved' || data.status === 'Final' || data.status === 'Issued';
-        const isPending = data.status === 'Pending';
-        const storeName = isRequest ? getStoreName(data.storeId) : '-';
-
-        let categoryLabel = '';
-        let categoryColorClass = '';
-        let CategoryIcon = Layers;
-
-        if (items.length > 0) {
-            const type = isRequest ? items[0].itemType : (items[0].source?.toLowerCase().includes('expendable') ? 'Expendable' : 'Non-Expendable');
-            if (type === 'Expendable') {
-                categoryLabel = 'खर्च भएर जाने जिन्सी सामान (Expendable Goods)';
-                categoryColorClass = 'text-orange-600 bg-orange-50 border-orange-100';
-                CategoryIcon = Layers;
-            } else {
-                categoryLabel = 'खर्च भएर नजाने जिन्सी सामान (Non-Expendable Goods)';
-                categoryColorClass = 'text-blue-600 bg-blue-50 border-blue-100';
-                CategoryIcon = ShieldIcon;
-            }
-        }
+        const storeName = isReq ? getStoreName((data as StockEntryRequest).storeId) : '-';
 
         return (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
@@ -234,92 +246,83 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                             <ArrowLeft size={20} />
                         </button>
                         <div>
-                            <h2 className="font-bold text-slate-700 font-nepali text-lg">दाखिला प्रतिवेदन विवरण (Dakhila Details)</h2>
-                            <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${isApproved ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
-                                    {data.status}
-                                </span>
-                            </div>
+                            <h2 className="font-bold text-slate-700 font-nepali text-lg">दाखिला प्रतिवेदन विवरण</h2>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase bg-indigo-50 text-indigo-700 border-indigo-200">
+                                {isReq ? 'अनुरोध (Pending Request)' : 'स्वीकृत (Final Report)'}
+                            </span>
                         </div>
                     </div>
                     <div className="flex gap-2">
-                         {isAdmin && isPending && isRequest && (
+                         {isApproverRole && isReq && (
                              <>
-                                <button onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 px-6 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg font-medium transition-colors border border-red-200">
-                                    <X size={18} /> अस्वीकृत (Reject)
+                                <button onClick={() => setShowRejectModal(true)} className="flex items-center gap-2 px-6 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg font-medium transition-colors">
+                                    अस्वीकार (Reject)
                                 </button>
-                                <button onClick={handleApproveClick} className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg font-medium shadow-sm transition-all active:scale-95">
-                                    <ShieldCheck size={18} /> स्वीकृत गर्नुहोस् (Approve)
+                                <button onClick={handleApprove} className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg font-medium shadow-sm transition-all active:scale-95">
+                                    <ShieldCheck size={18} /> स्वीकृत गर्नुहोस्
                                 </button>
                              </>
                          )}
-                         <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm transition-colors">
+                         <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium shadow-sm">
                             <Printer size={18} /> प्रिन्ट (Print)
                         </button>
                     </div>
                 </div>
 
-                {/* FORM 403 PRINT LAYOUT */}
-                <div id="dakhila-print-container" className="bg-white p-8 md:p-12 rounded-xl shadow-lg max-w-[210mm] mx-auto min-h-[297mm] text-slate-900 font-nepali text-sm print:shadow-none print:p-0 print:max-w-none">
+                {/* FORM 403 LAYOUT */}
+                <div className="bg-white p-10 rounded-xl shadow-lg max-w-[210mm] mx-auto min-h-[297mm] text-slate-900 font-nepali text-sm print:shadow-none print:p-0 print:max-w-none">
                     <div className="text-right font-bold text-[10px] mb-4">म.ले.प.फारम नं: ४०३</div>
 
-                    <div className="mb-8">
+                    <div className="mb-10">
                         <div className="flex items-start justify-between">
                             <div className="w-24 pt-2">
                                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Emblem_of_Nepal.svg/1200px-Emblem_of_Nepal.svg.png" alt="Emblem" className="h-24 w-24 object-contain"/>
                             </div>
                             <div className="flex-1 text-center space-y-1">
                                 <h1 className="text-xl font-bold text-red-600">{generalSettings.orgNameNepali}</h1>
-                                {generalSettings.subTitleNepali && <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>}
+                                <h2 className="text-lg font-bold">{generalSettings.subTitleNepali}</h2>
                                 {generalSettings.subTitleNepali2 && <h3 className="text-base font-bold">{generalSettings.subTitleNepali2}</h3>}
                                 {generalSettings.subTitleNepali3 && <h3 className="text-lg font-bold">{generalSettings.subTitleNepali3}</h3>}
                             </div>
                             <div className="w-24"></div> 
                         </div>
-                        <div className="text-center pt-6 pb-2">
+                        <div className="text-center pt-8">
                             <h2 className="text-xl font-bold underline underline-offset-4 uppercase tracking-wider">दाखिला प्रतिवेदन फाराम</h2>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-end mb-4 text-sm font-medium">
+                    <div className="flex justify-between items-end mb-6 text-sm font-medium">
                         <div className="space-y-1">
                             <div>आर्थिक वर्ष: <span className="font-bold border-b border-dotted border-slate-800 px-2">{data.fiscalYear}</span></div>
                             <div>स्टोर/गोदाम: <span className="font-bold border-b border-dotted border-slate-800 px-2">{storeName}</span></div>
                         </div>
                         <div className="space-y-1 text-right">
-                            <div>दाखिला नं.: <span className="font-bold text-red-600 border-b border-dotted border-slate-800 px-2">{dakhilaNo}</span></div>
-                            <div>मिति: <span className="font-bold border-b border-dotted border-slate-800 px-2">{date}</span></div>
+                            <div>दाखिला नं.: <span className="font-bold text-red-600 border-b border-dotted border-slate-800 px-2">#{dNo}</span></div>
+                            <div>मिति: <span className="font-bold border-b border-dotted border-slate-800 px-2">{dDate}</span></div>
                         </div>
                     </div>
 
-                    {categoryLabel && (
-                        <div className={`mb-3 py-2 px-4 rounded-lg border flex items-center gap-3 font-bold text-sm ${categoryColorClass}`}>
-                            <CategoryIcon size={18} />
-                            <span>प्रकार: {categoryLabel}</span>
-                        </div>
-                    )}
-
-                    <table className="w-full border-collapse border border-slate-900 text-center align-middle text-[11px]">
+                    <table className="w-full border-collapse border border-slate-900 text-center text-[11px]">
                         <thead>
                             <tr className="bg-slate-50">
                                 <th className="border border-slate-900 p-2 w-10">क्र.सं.</th>
                                 <th className="border border-slate-900 p-2">विवरण (सामानको नाम)</th>
-                                <th className="border border-slate-900 p-2 w-20">सङ्केत नं.</th>
-                                <th className="border border-slate-900 p-2 w-24">स्पेसिफिकेसन</th>
+                                <th className="border border-slate-900 p-2 w-24">सङ्केत नं.</th>
+                                <th className="border border-slate-900 p-2 w-28">स्पेसिफिकेसन</th>
                                 <th className="border border-slate-900 p-2 w-16">एकाई</th>
                                 <th className="border border-slate-900 p-2 w-16">परिमाण</th>
-                                <th className="border border-slate-900 p-2 w-20">दर</th>
-                                <th className="border border-slate-900 p-2 w-24">जम्मा मूल्य</th>
-                                <th className="border border-slate-900 p-2 w-24">कैफियत</th>
+                                <th className="border border-slate-900 p-2 w-24">दर (रु.)</th>
+                                <th className="border border-slate-900 p-2 w-28">जम्मा मूल्य</th>
+                                <th className="border border-slate-900 p-2 w-32">कैफियत</th>
                             </tr>
                         </thead>
                         <tbody>
                             {items.map((item: any, idx: number) => {
-                                const itemName = isRequest ? item.itemName : item.name;
-                                const codeNo = isRequest ? (item.sanketNo || item.uniqueCode) : item.codeNo;
+                                const itemName = isReq ? item.itemName : item.name;
+                                const codeNo = isReq ? (item.sanketNo || item.uniqueCode) : item.codeNo;
                                 const rate = item.rate || 0;
-                                const qty = isRequest ? item.currentQuantity : item.quantity;
-                                const total = isRequest ? item.totalAmount : item.finalTotal;
+                                const qty = isReq ? item.currentQuantity : item.quantity;
+                                const total = isReq ? item.totalAmount : item.finalTotal;
                                 
                                 return (
                                     <tr key={idx}>
@@ -338,40 +341,42 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                         </tbody>
                         <tfoot>
                             <tr className="bg-slate-50 font-bold">
-                                <td colSpan={7} className="border border-slate-900 p-2 text-right px-4 uppercase tracking-tighter">कुल जम्मा (Total Amount)</td>
-                                <td className="border border-slate-900 p-2 text-right px-2">
-                                    {items.reduce((sum: number, i: any) => sum + (isRequest ? i.totalAmount : i.finalTotal), 0).toFixed(2)}
+                                <td colSpan={7} className="border border-slate-900 p-2 text-right px-4 uppercase">कुल जम्मा (Total)</td>
+                                <td className="border border-slate-900 p-2 text-right px-2 font-black">
+                                    {items.reduce((sum: number, i: any) => sum + (isReq ? i.totalAmount : i.finalTotal), 0).toFixed(2)}
                                 </td>
                                 <td className="border border-slate-900 p-2"></td>
                             </tr>
                         </tfoot>
                     </table>
-                </div>
 
-                {/* APPROVE CONFIRMATION POPUP */}
-                {showApproveConfirm && selectedRequest && (
-                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity" onClick={() => setShowApproveConfirm(false)}></div>
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
-                            <div className="p-8 text-center">
-                                <div className="w-20 h-20 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner ring-4 ring-teal-50">
-                                    <HelpCircle size={40} />
+                    {/* DYNAMIC FOOTER FOR STOREKEEPER AND APPROVAL */}
+                    <div className="grid grid-cols-2 gap-20 mt-16 text-sm">
+                        {/* Prepared By Footer */}
+                        <div className="text-center">
+                            <div className="border-t border-slate-800 pt-3">
+                                <p className="font-bold">तयार गर्ने (जिन्सी शाखा)</p>
+                                <div className="mt-4 space-y-0.5">
+                                    <p className="font-bold text-slate-800">{isReq ? (data as StockEntryRequest).requesterName : (data as DakhilaPratibedanEntry).preparedBy?.name || '................................'}</p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold">{isReq ? (data as StockEntryRequest).requesterDesignation : (data as DakhilaPratibedanEntry).preparedBy?.designation || 'Storekeeper'}</p>
+                                    <p className="text-[10px] mt-1 italic">मिति: {isReq ? (data as StockEntryRequest).requestDateBs : (data as DakhilaPratibedanEntry).preparedBy?.date || dDate}</p>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-800 font-nepali mb-3">दाखिला स्वीकृत (Approve Entry)?</h3>
-                                <p className="text-slate-600 mb-2 font-medium">के तपाईं जिन्सी सामान दाखिला स्वीकृत गर्न चाहनुहुन्छ?</p>
-                                <p className="text-xs text-slate-400 bg-slate-50 p-2 rounded border border-slate-100">
-                                    स्वीकृत गरेपछि, <strong>{selectedRequest.items.length}</strong> वटा सामानहरू <strong>{getStoreName(selectedRequest.storeId)}</strong> गोदाममा थपिनेछन्।
-                                </p>
                             </div>
-                            <div className="grid grid-cols-2 gap-px bg-slate-100 border-t border-slate-100">
-                                <button onClick={() => setShowApproveConfirm(false)} className="bg-white py-4 text-slate-500 font-bold hover:bg-slate-50 transition-colors text-sm uppercase tracking-wider">हुँदैन (Cancel)</button>
-                                <button onClick={confirmApproval} className="bg-white py-4 text-teal-600 font-bold hover:bg-slate-50 transition-colors text-sm border-l border-slate-100 flex items-center justify-center gap-2 uppercase tracking-wider">
-                                    <ShieldCheck size={18} /> हुन्छ (Confirm)
-                                </button>
+                        </div>
+
+                        {/* Approved By Footer */}
+                        <div className="text-center">
+                            <div className="border-t border-slate-800 pt-3">
+                                <p className="font-bold">स्वीकृत गर्ने (कार्यालय प्रमुख)</p>
+                                <div className="mt-4 space-y-0.5">
+                                    <p className="font-bold text-slate-800">{isReq ? '................................' : (data as DakhilaPratibedanEntry).approvedBy?.name || '................................'}</p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold">{isReq ? 'Head of Office' : (data as DakhilaPratibedanEntry).approvedBy?.designation || 'Admin'}</p>
+                                    {!isReq && <p className="text-[10px] mt-1 italic">मिति: {(data as DakhilaPratibedanEntry).approvedBy?.date || dDate}</p>}
+                                </div>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
 
                 {/* Reject Modal */}
                 {showRejectModal && (
@@ -379,11 +384,11 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
                         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setShowRejectModal(false)}></div>
                         <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
                             <div className="px-6 py-4 border-b bg-red-50 text-red-800 flex justify-between items-center">
-                                <h3 className="font-bold">अस्वीकृत गर्नुहोस् (Reject Request)</h3>
+                                <h3 className="font-bold">अनुरोध अस्वीकृत गर्नुहोस् (Reject Request)</h3>
                                 <button onClick={() => setShowRejectModal(false)}><X size={20}/></button>
                             </div>
                             <div className="p-6 space-y-4">
-                                <textarea className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none" rows={4} placeholder="अस्वीकृतिको कारण लेख्नुहोस्..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
+                                <textarea className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-4 focus:ring-red-500/10 outline-none" rows={4} placeholder="अस्वीकृतिको कारण लेख्नुहोस्..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
                                 <div className="flex justify-end gap-3 pt-2">
                                     <button onClick={() => setShowRejectModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm">Cancel</button>
                                     <button onClick={handleRejectSubmit} className="px-6 py-2 bg-red-600 text-white rounded-lg text-sm font-bold shadow-sm">Confirm Reject</button>
@@ -396,8 +401,5 @@ export const DakhilaPratibedan: React.FC<DakhilaPratibedanProps> = ({
         );
     };
 
-    if (selectedRequest) return renderDetailView(selectedRequest, true);
-    if (selectedReport) return renderDetailView(selectedReport, false);
-
-    return null;
+    return renderDetailView();
 };
